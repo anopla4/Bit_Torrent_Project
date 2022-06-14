@@ -1,0 +1,47 @@
+syntax = "proto3";
+package tracker;
+
+option go_package = "./trackerpb";
+
+message AnnounceQuery {
+    bytes infoHash = 1;
+    bytes peerID = 2; 
+	bytes IP = 3;         
+	uint32 Port = 4;      
+	int64 Uploaded  = 5; 
+	int64 Downloaded= 6; 
+	int32 Left      = 7; 
+	int32 Event     = 8; 
+	int32 NumWant   = 9;  
+}
+
+
+message AnnounceResponse {
+	int32 interval   =1;
+	string trackerID  =2;
+	int64 complete   =3;
+	int64 incomplete =4;
+	string peers  = 5;    
+}
+
+
+message ScraperQuery {
+	repeated bytes infoHash = 1;
+}
+
+message File {
+	int64 incomplete=1;
+	int64 complete=2;
+	int64 downloaded=3;
+}
+
+//ScraperResponse representa el contenido de una respuesta a peticion Scraper
+message ScraperResponse {
+	map<string,File> files = 1;
+}
+
+
+service Tracker {
+    rpc Announce (AnnounceQuery) returns (AnnounceResponse){}
+	rpc Scraper(ScraperQuery) returns (ScraperResponse){}
+}
