@@ -5,8 +5,8 @@ option go_package = "./trackerpb";
 
 message AnnounceQuery {
     bytes infoHash = 1;
-    bytes peerID = 2; 
-	bytes IP = 3;         
+    string peerID = 2; 
+	string IP = 3;         
 	uint32 Port = 4;      
 	int64 Uploaded  = 5; 
 	int64 Downloaded= 6; 
