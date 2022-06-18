@@ -3,6 +3,17 @@ package tracker;
 
 option go_package = "./trackerpb";
 
+message PublishQuery {
+	bytes infoHash = 1;
+	string peerID = 2;
+	string IP = 3;         
+	uint32 Port = 4;
+}
+
+message PublishResponse {
+	bool status = 1;
+}
+
 message AnnounceQuery {
     bytes infoHash = 1;
     string peerID = 2; 
@@ -11,8 +22,9 @@ message AnnounceQuery {
 	int64 Uploaded  = 5; 
 	int64 Downloaded= 6; 
 	int32 Left      = 7; 
-	int32 Event     = 8; 
-	int32 NumWant   = 9;  
+	string Event     = 8; 
+	int32 NumWant   = 9;
+	bool request = 10;
 }
 
 
@@ -21,12 +33,14 @@ message AnnounceResponse {
 	string trackerID  =2;
 	int64 complete   =3;
 	int64 incomplete =4;
-	string peers  = 5;    
+	string peers  = 5;
+	string failureReason = 6;    
 }
 
 
 message ScraperQuery {
 	repeated bytes infoHash = 1;
+	string failureReason = 2;
 }
 
 message File {
@@ -42,6 +56,7 @@ message ScraperResponse {
 
 
 service Tracker {
+	rpc Publish (PublishQuery) returns (PublishResponse){}
     rpc Announce (AnnounceQuery) returns (AnnounceResponse){}
-	rpc Scraper(ScraperQuery) returns (ScraperResponse){}
+	rpc Scrape(ScraperQuery) returns (ScraperResponse){}
 }

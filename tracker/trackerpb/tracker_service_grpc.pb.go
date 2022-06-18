@@ -22,7 +22,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TrackerClient interface {
+	Publish(ctx context.Context, in *PublishQuery, opts ...grpc.CallOption) (*PublishResponse, error)
 	Announce(ctx context.Context, in *AnnounceQuery, opts ...grpc.CallOption) (*AnnounceResponse, error)
+	Scrape(ctx context.Context, in *ScraperQuery, opts ...grpc.CallOption) (*ScraperResponse, error)
 }
 
 type trackerClient struct {
@@ -31,6 +33,15 @@ type trackerClient struct {
 
 func NewTrackerClient(cc grpc.ClientConnInterface) TrackerClient {
 	return &trackerClient{cc}
+}
+
+func (c *trackerClient) Publish(ctx context.Context, in *PublishQuery, opts ...grpc.CallOption) (*PublishResponse, error) {
+	out := new(PublishResponse)
+	err := c.cc.Invoke(ctx, "/tracker.Tracker/Publish", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *trackerClient) Announce(ctx context.Context, in *AnnounceQuery, opts ...grpc.CallOption) (*AnnounceResponse, error) {
@@ -42,11 +53,22 @@ func (c *trackerClient) Announce(ctx context.Context, in *AnnounceQuery, opts ..
 	return out, nil
 }
 
+func (c *trackerClient) Scrape(ctx context.Context, in *ScraperQuery, opts ...grpc.CallOption) (*ScraperResponse, error) {
+	out := new(ScraperResponse)
+	err := c.cc.Invoke(ctx, "/tracker.Tracker/Scrape", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TrackerServer is the server API for Tracker service.
 // All implementations must embed UnimplementedTrackerServer
 // for forward compatibility
 type TrackerServer interface {
+	Publish(context.Context, *PublishQuery) (*PublishResponse, error)
 	Announce(context.Context, *AnnounceQuery) (*AnnounceResponse, error)
+	Scrape(context.Context, *ScraperQuery) (*ScraperResponse, error)
 	mustEmbedUnimplementedTrackerServer()
 }
 
@@ -54,8 +76,14 @@ type TrackerServer interface {
 type UnimplementedTrackerServer struct {
 }
 
+func (UnimplementedTrackerServer) Publish(context.Context, *PublishQuery) (*PublishResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Publish not implemented")
+}
 func (UnimplementedTrackerServer) Announce(context.Context, *AnnounceQuery) (*AnnounceResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Announce not implemented")
+}
+func (UnimplementedTrackerServer) Scrape(context.Context, *ScraperQuery) (*ScraperResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Scrape not implemented")
 }
 func (UnimplementedTrackerServer) mustEmbedUnimplementedTrackerServer() {}
 
@@ -68,6 +96,24 @@ type UnsafeTrackerServer interface {
 
 func RegisterTrackerServer(s grpc.ServiceRegistrar, srv TrackerServer) {
 	s.RegisterService(&Tracker_ServiceDesc, srv)
+}
+
+func _Tracker_Publish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PublishQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TrackerServer).Publish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tracker.Tracker/Publish",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TrackerServer).Publish(ctx, req.(*PublishQuery))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Tracker_Announce_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -88,6 +134,24 @@ func _Tracker_Announce_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Tracker_Scrape_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ScraperQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TrackerServer).Scrape(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tracker.Tracker/Scrape",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TrackerServer).Scrape(ctx, req.(*ScraperQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Tracker_ServiceDesc is the grpc.ServiceDesc for Tracker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -96,8 +160,16 @@ var Tracker_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*TrackerServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
+			MethodName: "Publish",
+			Handler:    _Tracker_Publish_Handler,
+		},
+		{
 			MethodName: "Announce",
 			Handler:    _Tracker_Announce_Handler,
+		},
+		{
+			MethodName: "Scrape",
+			Handler:    _Tracker_Scrape_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
