@@ -21,9 +21,9 @@ message AnnounceQuery {
 	int32 Port = 4;      
 	uint64 Uploaded  = 5; 
 	uint64 Downloaded= 6; 
-	uint32 Left      = 7; 
+	uint64 Left      = 7; 
 	string Event     = 8; 
-	int32 NumWant   = 9;
+	uint32 NumWant   = 9;
 	bool request = 10;
 }
 
