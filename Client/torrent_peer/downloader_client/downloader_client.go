@@ -87,3 +87,14 @@ func MessageStream(c torrent_peerpb.DownloadServiceClient, requests chan *torren
 
 	<-waitc
 }
+
+func Handshake(c torrent_peerpb.DownloadServiceClient, msg *torrent_peerpb.HandshakeRequest) {
+	res, err := c.Handshake(context.Background(), msg)
+
+	if err != nil {
+		log.Fatalf("Error while calling Handshake RPC: %v\n", err)
+		return
+	}
+
+	log.Printf("Response: %v\n", res)
+}
