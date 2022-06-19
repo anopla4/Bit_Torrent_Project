@@ -22,13 +22,13 @@ type ParseAnnounce struct {
 	InfoHash   string //dic bencodificado
 	PeerID     string // Id del peer
 	IP         net.IP //Ip del peer Opcional
-	Port       int   // Port del peer Opcional
+	Port       int    // Port del peer Opcional
 	Uploaded   uint64
 	Downloaded uint64
 	Left       uint64
 	Event      string
 	NumWant    uint32 //Cantidad de peer que solicita el peer, Default 50
-	Request    bool // Indica si quiere recibir peers
+	Request    bool   // Indica si quiere recibir peers
 }
 
 // AnnounceResponse es una representacion de una respuesta a un announce get query
@@ -140,13 +140,15 @@ func (tk *TrackerServer) publishTorrent(infoHash, peerID string, port int, ip ne
 
 func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (*pb.AnnounceResponse, error) {
 	pa, err := AnnounceQueryCheck(annq)
-	var ar *pb.AnnounceResponse
+	var ar pb.AnnounceResponse
 	if err != nil {
-		ar.FailureReason = err
-		return ar, err
+		ar.FailureReason = err.Error()
+		return &ar, err
 	}
-	event = pa.Event
-	infoHash = pa.InfoHash
+	event := pa.Event
+	request := pa.Request
+	infoHash := pa.InfoHash
+	//infoHash = pa.InfoHash
 	
 	
 }
@@ -176,26 +178,21 @@ func AnnounceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 		return
 	}
 	pa.Port = int(port)
-	uploaded := annPb.Uploaded
-	downloaded := annPb.Downloaded
-	left := annPb.Left
+	pa.Uploaded = annPb.GetUploaded()
+	pa.Downloaded = annPb.GetDownloaded()
+	pa.Left = annPb.GetLeft()
 	event := annPb.GetEvent()
 	numwant := annPb.GetNumWant()
 	if numwant < 1{
 		numwant = 40
 	}
-	if event != "public" && event != "started" && event != "completed" && event != "stopped"{
+	if event != "request" && event != "started" && event != "completed" && event != "stopped"{
 		err = fmt.Errorf("No se reconoce el evento especificado")
 		return
 	}
 	pa.Event = event
-	if downloaded == nil && left == nil{
-		err = fmt.Errorf("No se especifican correctamente las claves downloaded y left")
-		return
-	}
-	pa.Downloaded = downloaded
-	pa.Uploaded = uploaded
-	pa.Left = left
+	pa.NumWant = numwant
+	pa.Request = annPb.GetRequest()
 	return 
 }
 
