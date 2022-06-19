@@ -7,21 +7,21 @@ message PublishQuery {
 	bytes infoHash = 1;
 	string peerID = 2;
 	string IP = 3;         
-	uint32 Port = 4;
+	int32 Port = 4;
 }
 
 message PublishResponse {
-	bool status = 1;
+	int32 status = 1;
 }
 
 message AnnounceQuery {
     bytes infoHash = 1;
     string peerID = 2; 
 	string IP = 3;         
-	uint32 Port = 4;      
-	int64 Uploaded  = 5; 
-	int64 Downloaded= 6; 
-	int32 Left      = 7; 
+	int32 Port = 4;      
+	uint64 Uploaded  = 5; 
+	uint64 Downloaded= 6; 
+	uint32 Left      = 7; 
 	string Event     = 8; 
 	int32 NumWant   = 9;
 	bool request = 10;
@@ -29,7 +29,7 @@ message AnnounceQuery {
 
 
 message AnnounceResponse {
-	int32 interval   =1;
+	uint32 interval   =1;
 	string trackerID  =2;
 	int64 complete   =3;
 	int64 incomplete =4;
