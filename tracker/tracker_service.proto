@@ -33,14 +33,13 @@ message AnnounceResponse {
 	string trackerID  =2;
 	int64 complete   =3;
 	int64 incomplete =4;
-	string peers  = 5;
+	map<string,string> peers  = 5;
 	string failureReason = 6;    
 }
 
 
 message ScraperQuery {
 	repeated bytes infoHash = 1;
-	string failureReason = 2;
 }
 
 message File {
@@ -52,6 +51,7 @@ message File {
 //ScraperResponse representa el contenido de una respuesta a peticion Scraper
 message ScraperResponse {
 	map<string,File> files = 1;
+	string failureReason = 2;
 }
 
 
