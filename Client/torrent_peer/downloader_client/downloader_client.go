@@ -33,7 +33,7 @@ func StartClient(port string) (*grpc.ClientConn, error) {
 	return grpc.Dial("localhost:"+port, opts)
 }
 
-func MessageStream(c torrent_peerpb.DownloadServiceClient, requests []*torrent_peerpb.Message) {
+func MessageStream(c torrent_peerpb.DownloadServiceClient, requests chan *torrent_peerpb.Message) {
 
 	// Create a stream by invoking the client
 	stream, err := c.SendMessage(context.Background())
@@ -47,19 +47,25 @@ func MessageStream(c torrent_peerpb.DownloadServiceClient, requests []*torrent_p
 
 	// Send messages to server
 	go func() {
-		for _, msg := range requests {
-			fmt.Printf("Sending message:  %v\n", msg)
-			sendErr := stream.Send(&torrent_peerpb.SendMessageRequest{Message: msg})
+		for {
+			if msg, ok := <-requests; ok {
+				fmt.Printf("Sending message:  %v\n", msg)
+				sendErr := stream.Send(&torrent_peerpb.SendMessageRequest{Message: msg})
 
-			if sendErr != nil {
-				log.Fatalf("Error while sending request to client: %v\n", err)
+				if sendErr != nil {
+					log.Fatalf("Error while sending request to client: %v\n", err)
+					break
+				}
+
+			} else {
+				err := stream.CloseSend()
+				if err != nil {
+					log.Fatalf("Error while closing send stream: %v\n", err)
+				}
 				break
 			}
 		}
-		err := stream.CloseSend()
-		if err != nil {
-			log.Fatalf("Error while closing send stream: %v\n", err)
-		}
+
 	}()
 
 	// Receive messages from server
