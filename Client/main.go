@@ -10,42 +10,69 @@ import (
 	"torrent_peerpb"
 )
 
+var wg = sync.WaitGroup{}
+
 func main() {
-	wg := sync.WaitGroup{}
+
 	wg.Add(2)
-	go func(port string) {
-		fmt.Println("Hello World")
 
-		uploader_client.StartServer(port)
+	fmt.Println("Input server ip and port")
+	var ip, port string
+	_, err := fmt.Scanln(&ip, &port)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		wg.Done()
-	}("50051")
+	go StartClientUploader(ip, port)
 
-	go func(port string) {
-		time.Sleep(20 * time.Second)
-		cc, err := downloader_client.StartClient(port)
+	fmt.Println("Input peer ip and port")
+	var peer_ip, peer_port string
+	_, err = fmt.Scanln(&peer_ip, &peer_port)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-		if err != nil {
-			log.Fatalf("Could not connect: %v", err)
-			return
-		}
-		defer cc.Close()
-		c := torrent_peerpb.NewDownloadServiceClient(cc)
-		requests := []*torrent_peerpb.Message{
-			{
-				Length: 1, Id: 1,
-			},
-			{
-				Length: 1, Id: 2,
-			},
-			{
-				Length: 1, Id: 3,
-			},
-		}
-		downloader_client.MessageStream(c, requests)
+	requests := make(chan *torrent_peerpb.Message, 4)
+	requests <- &torrent_peerpb.Message{
+		Length: 1, Id: 1,
+	}
 
-		wg.Done()
-	}("6881")
+	go StartClientDownloader(peer_ip, peer_port, requests)
+
+	time.Sleep(4 * time.Second)
+	requests <- &torrent_peerpb.Message{
+		Length: 1, Id: 2,
+	}
+	requests <- &torrent_peerpb.Message{
+		Length: 1, Id: 3,
+	}
 
 	wg.Wait()
+}
+
+func StartClientDownloader(ip string, port string, requests chan *torrent_peerpb.Message) {
+	// Dial throw port and ip from peer
+	cc, err := downloader_client.StartClient(port)
+
+	if err != nil {
+		log.Fatalf("Could not connect: %v", err)
+		return
+	}
+	defer cc.Close()
+
+	// Initialize Download service in connection
+	c := torrent_peerpb.NewDownloadServiceClient(cc)
+
+	downloader_client.MessageStream(c, requests)
+
+	wg.Done()
+}
+
+func StartClientUploader(ip string, port string) {
+	fmt.Println("Hello World")
+
+	// Listen to new connections
+	uploader_client.StartServer(port)
+
+	wg.Done()
 }
