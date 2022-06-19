@@ -290,11 +290,32 @@ func AnnounceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 	return
 }
 
-
+//Scrape procesa el servio Scrape del Tracker tomando un ScraperQuery y devolviendo un ScraperResponse
 func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.ScraperResponse, error){
-
+	infoHashes, err := ParseScraperRequest(sc)
+	var sr pb.ScraperResponse
+	if err != nil{
+		sr.FailureReason = err.Error()
+		return &sr, err
+	}
+	tt := tk.Torrents
+	files := make(map[string]*pb.File, len(infoHashes))
+	for _, ih := range infoHashes{
+		if ttk, found := tt[ih]; found{
+			_, incomplete := ttk.Peers.TorrentStats()
+			files[ih] = &pb.File{
+								Incomplete:incomplete,
+								Complete: int64(ttk.Complete),
+								Downloaded: int64(ttk.Downloaded),
+								}
+		}
+	}
+	sr.Files = files
+	return &sr, nil
 }
 
+//ParseScraperRequest valida la peticion de un ScrapeQuery y devuelve la lista de infoHashes
+// que fueron requeridos
 func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error){
 	infoHashes := sc.GetInfoHash()
 	n := len(infoHashes)
