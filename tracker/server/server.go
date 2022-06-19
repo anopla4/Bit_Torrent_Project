@@ -12,7 +12,6 @@ import (
 
 // constantes para el status de un Publish Request
 const (
-	ERROR         = 0
 	OK            = 1
 	ALREADYEXISTT = 2
 	ALREADYEXISTP = 3
@@ -33,13 +32,13 @@ type ParseAnnounce struct {
 }
 
 // AnnounceResponse es una representacion de una respuesta a un announce get query
-type AnnounceResponse struct {
-	Interval   uint16
-	TrackerID  string
-	Complete   uint64
-	Incomplete uint64
-	Peers      map[string]string
-}
+//type AnnounceResponse struct {
+//	Interval   uint16
+//	TrackerID  string
+//	Complete   uint64
+//	Incomplete uint64
+//	Peers      map[string]string
+//}
 
 //PeersPool es un diccionario que mapea el peerID con un Peer
 type PeersPool map[string]*PeerTk
@@ -65,17 +64,19 @@ type TorrentTk struct {
 	Peers      PeersPool
 }
 
+//TrackerServer es la representacion de la estructura del tracker
 type TrackerServer struct {
 	//AnnReq     ParseAnnounce
 	//AnnResp    AnnounceResponse
 	TkID       string
 	Interval   uint32
-	Ip         net.IP
+	IP         net.IP
 	Port       int32
 	ListenAddr *net.Listener
 	Torrents   TorrentsPool
 }
 
+//Publish maneja el servicio Publish request del tracker recibiendo un PublishQuery y devolviendo un PublishResponse
 func (tk *TrackerServer) Publish(ctx context.Context, pq *pb.PublishQuery) (*pb.PublishResponse, error) {
 	ih := pq.GetInfoHash()
 	if ih == nil || len(ih) != 20 {
@@ -134,8 +135,9 @@ func (tk *TrackerServer) publishTorrent(infoHash, peerID string, port int, ip ne
 	return OK
 }
 
+//Announce maneja el servicio Announce request del tracker recibiendo un AnnounceQuery y devolviendo un AnnounceResponse
 func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (*pb.AnnounceResponse, error) {
-	pa, err := AnnounceQueryCheck(annq)
+	pa, err := announceQueryCheck(annq)
 	var ar pb.AnnounceResponse
 	if err != nil {
 		ar.FailureReason = err.Error()
@@ -146,13 +148,13 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 	infoHash := pa.InfoHash
 	tt := tk.Torrents
 	if ttk, ok := tt[infoHash]; ok {
-		ptk, err := ttk.Peers.GetPeer(pa.PeerID)
+		ptk, err := ttk.Peers.getPeer(pa.PeerID)
 		if err != nil {
 			ar.FailureReason = err.Error()
 			return &ar, err
 		}
 		if request {
-			peerSet, _ := ttk.Peers.GetRandomPeers(pa.PeerID, int(pa.NumWant))
+			peerSet, _ := ttk.Peers.getRandomPeers(pa.PeerID, int(pa.NumWant))
 			ar.Peers = peerSet
 		}
 		switch event {
@@ -167,19 +169,19 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 			ptk.State = "stopped"
 		}
 		ar.Interval = tk.Interval
-		ar.Complete, ar.Incomplete = ttk.Peers.TorrentStats()
+		ar.Complete, ar.Incomplete = ttk.Peers.torrentStats()
 		return &ar, nil
-	} else {
-		err = fmt.Errorf("No coincide el infohash")
-		ar.FailureReason = err.Error()
-		return &ar, err
 	}
+	err = fmt.Errorf("No coincide el infohash")
+	ar.FailureReason = err.Error()
+	return &ar, err
 }
 
 //para representar un conjunto de enteros
 type intset map[int]interface{}
 
-func (pp PeersPool) TorrentStats()(complete, incomplete int64){
+//devuelve las estadisticas de complete e incomplete para un torrent 
+func (pp PeersPool) torrentStats()(complete, incomplete int64){
 	complete, incomplete = 0,0
 	for _ , v := range pp {
 		switch v.State{
@@ -193,7 +195,8 @@ func (pp PeersPool) TorrentStats()(complete, incomplete int64){
 	return
 }
 
-func (pp PeersPool) GetRandomPeers(excludeID string, numwant int) (map[string]string, error) {
+//Devuelve una cantidad pseudorandom de peers en base al numwant
+func (pp PeersPool) getRandomPeers(excludeID string, numwant int) (map[string]string, error) {
 	maxPeers := len(pp)
 	if _, ok := pp[excludeID]; ok {
 		maxPeers--
@@ -239,7 +242,8 @@ func (pp PeersPool) GetRandomPeers(excludeID string, numwant int) (map[string]st
 	return peers, nil
 }
 
-func (pp PeersPool) GetPeer(id string) (*PeerTk, error) {
+//Dado un id, retorna el correspondiente peerTk
+func (pp PeersPool) getPeer(id string) (*PeerTk, error) {
 	if ptk, ok := pp[id]; ok {
 		return ptk, nil
 	}
@@ -247,7 +251,8 @@ func (pp PeersPool) GetPeer(id string) (*PeerTk, error) {
 	return nil, err
 }
 
-func AnnounceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
+//funcion para parsear y chequear un AnnounceQuery, generando un ParseAnnounce
+func announceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 	infoHash := annPb.GetInfoHash()
 	if infoHash == nil || len(infoHash) != 20 {
 		err = fmt.Errorf("Infohash vacio")
@@ -302,7 +307,7 @@ func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.S
 	files := make(map[string]*pb.File, len(infoHashes))
 	for _, ih := range infoHashes{
 		if ttk, found := tt[ih]; found{
-			_, incomplete := ttk.Peers.TorrentStats()
+			_, incomplete := ttk.Peers.torrentStats()
 			files[ih] = &pb.File{
 								Incomplete:incomplete,
 								Complete: int64(ttk.Complete),
