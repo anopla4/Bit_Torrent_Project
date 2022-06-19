@@ -1,9 +1,11 @@
 package dht
 
 import (
+	"bytes"
 	"crypto/rand"
 	"errors"
 	"net"
+	"sort"
 	"strconv"
 	"time"
 )
@@ -96,10 +98,6 @@ func (rt *routingTable) getTotalKnownNodes() int {
 	return total
 }
 
-func (rt *routingTable) getNearestNodes(num int, node []byte) *nodeList {
-	return &nodeList{}
-}
-
 //index of correspondent bucket for node(first bite different)
 func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
 	for i := 0; i < len(node); i++ {
@@ -112,4 +110,69 @@ func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
 		}
 	}
 	return 0
+}
+
+//check if node with id nodeID
+func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int) bool {
+	<-rt.lock
+	defer func() { rt.lock <- struct{}{} }()
+	for _, n := range rt.table[bucket].bucket {
+		if bytes.Equal(n.ID, nodeID) {
+			return true
+		}
+	}
+	return false
+}
+
+//return the num nearest nodes to a node with ID nodeID
+func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
+	nl := &nodeList{}
+
+	<-rt.lock
+	defer func() { rt.lock <- struct{}{} }()
+
+	index := rt.getFirstDifBitBucketIndex(nodeID)
+
+	i := index - 1
+	j := index + 1
+	indexes := []int{index}
+	for i >= 0 || j < B {
+		if i >= 0 {
+			indexes = append(indexes, i)
+		}
+		if j < B {
+			indexes = append(indexes, j)
+		}
+		i--
+		j--
+	}
+
+	toAdd := num
+
+	for num > 0 && len(indexes) > 0 {
+		index, indexes = indexes[0], indexes[1:]
+		for _, v := range rt.table[index].bucket {
+			nl.AppendUnique([]*node{v})
+			toAdd--
+			if toAdd == 0 {
+				break
+			}
+		}
+	}
+	sort.Sort(nl)
+	return nl
+}
+
+//remove node with id nodeID from routing table
+func (rt *routingTable) RemoveNode(nodeID []byte) {
+	<-rt.lock
+	defer func() { rt.lock <- struct{}{} }()
+
+	index := rt.getFirstDifBitBucketIndex(nodeID)
+
+	for i, v := range rt.table[index].bucket {
+		if bytes.Equal(v.ID, nodeID) {
+			rt.table[index].bucket = append(rt.table[index].bucket[:i], rt.table[index].bucket[i+1:]...)
+		}
+	}
 }

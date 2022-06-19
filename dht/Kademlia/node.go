@@ -79,12 +79,12 @@ func getDistance(id1 []byte, id2 []byte) *big.Int {
 }
 
 //swap two Nodes in Nodelist
-func (l *nodeList) swap(i, j int) {
+func (l *nodeList) Swap(i, j int) {
 	l.Nodes[i], l.Nodes[j] = l.Nodes[j], l.Nodes[i]
 }
 
 //return true if node i is nearest to comparator
-func (l *nodeList) less(i, j int) bool {
+func (l *nodeList) Less(i, j int) bool {
 	iDist := getDistance(l.Nodes[i].ID, l.Comparator)
 	jDist := getDistance(l.Nodes[j].ID, l.Comparator)
 
