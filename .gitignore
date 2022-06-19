@@ -127,3 +127,8 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+client/vendor
+client/go.mod
+client/go.sum
+client/generate.sh
