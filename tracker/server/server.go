@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"fmt"
+	_ "encoding/json"
+	"flag"
+	"log"
 	"math/rand"
 	"net"
 	"time"
+	"google.golang.org/grpc"
 
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
@@ -68,6 +72,7 @@ type TorrentTk struct {
 type TrackerServer struct {
 	//AnnReq     ParseAnnounce
 	//AnnResp    AnnounceResponse
+	pb.UnimplementedTrackerServer
 	TkID       string
 	Interval   uint32
 	IP         net.IP
@@ -335,3 +340,27 @@ func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error){
 	return parseInfoHashes, nil
 }
 
+
+
+func newTrackerServer() *TrackerServer {
+	//s := &routeGuideServer{routeNotes: make(map[string][]*pb.RouteNote)}
+	//s.loadFeatures(*jsonDBFile)
+	tt := &TrackerServer{}
+	return tt
+}
+
+func main() {
+	port := flag.Int("port", 8168, "set port for TCP conection")
+	flag.Parse()
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", *port))
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	sr := grpc.NewServer()
+
+	pb.RegisterTrackerServer(sr, newTrackerServer())
+	err2 := sr.Serve(lis)
+	if err2 != nil{
+		log.Fatalf("failed to listen: %v", err2)
+	}
+}
