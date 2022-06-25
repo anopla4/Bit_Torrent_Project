@@ -356,6 +356,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+	fmt.Println(fmt.Sprintf("Server in port:%d",*port))  
 	sr := grpc.NewServer()
 
 	pb.RegisterTrackerServer(sr, newTrackerServer())
