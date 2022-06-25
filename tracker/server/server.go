@@ -49,7 +49,7 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 func newTrackerServer() *tk.TrackerServer {
 	//s := &routeGuideServer{routeNotes: make(map[string][]*pb.RouteNote)}
 	//s.loadFeatures(*jsonDBFile)
-	tt := &tk.TrackerServer{}
+	tt := &tk.TrackerServer{Torrents: make(tk.TorrentsPool)}
 	return tt
 }
 
