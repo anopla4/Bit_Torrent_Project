@@ -2,7 +2,9 @@ package downloader_client
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -29,9 +31,26 @@ func MessageStreamTCP(c net.Conn) error {
 }
 
 func StartClientTCP(url string) (net.Conn, error) {
-	c, err := net.Dial("tcp", url)
+	cert, tlsErr := tls.LoadX509KeyPair("./SSL/client.pem", "./SSL/client.key")
+
+	if tlsErr != nil {
+		log.Fatalf("Error while loading tls keys: %v\n", tlsErr)
+	}
+
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true}
+
+	c, err := tls.Dial("tcp", url, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
+	log.Println("client: connected to: ", c.RemoteAddr())
+
+	state := c.ConnectionState()
+	for _, v := range state.PeerCertificates {
+		// fmt.Println(x509.MarshalPKIXPublicKey(v.PublicKey))
+		fmt.Println(v.Subject)
+	}
+	log.Println("client: handshake: ", state.HandshakeComplete)
+
 	return c, nil
 }
