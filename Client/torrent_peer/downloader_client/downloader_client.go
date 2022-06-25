@@ -37,8 +37,7 @@ func StartClientTCP(url string) (net.Conn, error) {
 		log.Fatalf("Error while loading tls keys: %v\n", tlsErr)
 	}
 
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true}
-
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: false}
 	c, err := tls.Dial("tcp", url, tlsConfig)
 	if err != nil {
 		return nil, err
