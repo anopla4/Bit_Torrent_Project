@@ -17,7 +17,7 @@ func ServerTCP(port string) error {
 	if err != nil {
 		log.Fatalf("Error loading certificate: %v\n", err)
 	}
-	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAndVerifyClientCert}
 
 	l, listenErr := tls.Listen("tcp", port, tlsCfg)
 	if listenErr != nil {
