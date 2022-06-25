@@ -1,100 +1,37 @@
 package downloader_client
 
 import (
-	"context"
+	"bufio"
 	"fmt"
-	"io"
-	"log"
-	"torrent_peerpb"
-
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
+	"net"
+	"os"
+	"strings"
 )
 
-func StartClient(port string) (*grpc.ClientConn, error) {
-	fmt.Println("Hello I'm a client")
+func MessageStreamTCP(c net.Conn) error {
+	for {
+		reader := bufio.NewReader(os.Stdin)
+		fmt.Print(">> ")
+		text, _ := reader.ReadString('\n')
+		fmt.Fprintf(c, text+"\n")
 
-	tls := false
-	opts := grpc.WithInsecure()
-
-	// SSL credentials
-	if tls {
-		certFile := "ssl/ca.crt" // Certificate Authority Trust certificate
-		creds, sslErr := credentials.NewClientTLSFromFile(certFile, "")
-		if sslErr != nil {
-			log.Fatalf("Error while loading CA trust certificate: %v\n", sslErr)
-			return nil, sslErr
+		message, err := bufio.NewReader(c).ReadString('\n')
+		if err != nil {
+			return err
 		}
-		opts = grpc.WithTransportCredentials(creds)
+
+		fmt.Print("->: " + message)
+		if strings.TrimSpace(string(text)) == "STOP" {
+			fmt.Println("TCP client exiting...")
+			return nil
+		}
 	}
-
-	// Start connection with server
-
-	return grpc.Dial("localhost:"+port, opts)
 }
 
-func MessageStream(c torrent_peerpb.DownloadServiceClient, requests chan *torrent_peerpb.Message) {
-
-	// Create a stream by invoking the client
-	stream, err := c.SendMessage(context.Background())
-
+func StartClientTCP(url string) (net.Conn, error) {
+	c, err := net.Dial("tcp", url)
 	if err != nil {
-		log.Fatalf("Error while creating stream: %v\n", err)
-		return
+		return nil, err
 	}
-
-	waitc := make(chan struct{})
-
-	// Send messages to server
-	go func() {
-		for {
-			if msg, ok := <-requests; ok {
-				fmt.Printf("Sending message:  %v\n", msg)
-				sendErr := stream.Send(&torrent_peerpb.SendMessageRequest{Message: msg})
-
-				if sendErr != nil {
-					log.Fatalf("Error while sending request to client: %v\n", err)
-					break
-				}
-
-			} else {
-				err := stream.CloseSend()
-				if err != nil {
-					log.Fatalf("Error while closing send stream: %v\n", err)
-				}
-				break
-			}
-		}
-
-	}()
-
-	// Receive messages from server
-
-	go func() {
-		for {
-			res, streamErr := stream.Recv()
-			if streamErr == io.EOF {
-				break
-			}
-			if streamErr != nil {
-				log.Fatalf("Error while receiving data: %v\n", err)
-				break
-			}
-			fmt.Printf("Response: %v\n", res)
-		}
-		close(waitc)
-	}()
-
-	<-waitc
-}
-
-func Handshake(c torrent_peerpb.DownloadServiceClient, msg *torrent_peerpb.HandshakeRequest) {
-	res, err := c.Handshake(context.Background(), msg)
-
-	if err != nil {
-		log.Fatalf("Error while calling Handshake RPC: %v\n", err)
-		return
-	}
-
-	log.Printf("Response: %v\n", res)
+	return c, nil
 }
