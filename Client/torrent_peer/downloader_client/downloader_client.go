@@ -1,32 +1,39 @@
 package downloader_client
 
 import (
+	"Bit_Torrent_Project/client/client/structures"
 	"bufio"
 	"crypto/tls"
 	"fmt"
 	"log"
 	"net"
-	"os"
-	"strings"
 )
 
-func MessageStreamTCP(c net.Conn) error {
+func SendRequests(c net.Conn, requests chan *structures.Message, errors chan error) {
 	for {
-		reader := bufio.NewReader(os.Stdin)
-		fmt.Print(">> ")
-		text, _ := reader.ReadString('\n')
-		fmt.Fprintf(c, text+"\n")
+		if req, ok := <-requests; ok {
+			serializedReq := req.Serialize()
+			log.Println(serializedReq)
+			_, err := c.Write(serializedReq)
+			if err != nil {
+				log.Fatalf("Error while sending request: %v\n", err)
+				errors <- err
+				break
+			}
+		} else {
+			break
+		}
+	}
+}
 
-		message, err := bufio.NewReader(c).ReadString('\n')
+func ReceiveResponses(c net.Conn, errors chan error) {
+	for {
+		message, err := structures.Deserialize(bufio.NewReader(c))
 		if err != nil {
-			return err
+			errors <- err
+			break
 		}
-
-		fmt.Print("->: " + message)
-		if strings.TrimSpace(string(text)) == "STOP" {
-			fmt.Println("TCP client exiting...")
-			return nil
-		}
+		log.Fatalln(message)
 	}
 }
 
@@ -37,7 +44,7 @@ func StartClientTCP(url string) (net.Conn, error) {
 		log.Fatalf("Error while loading tls keys: %v\n", tlsErr)
 	}
 
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: false}
+	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true}
 	c, err := tls.Dial("tcp", url, tlsConfig)
 	if err != nil {
 		return nil, err

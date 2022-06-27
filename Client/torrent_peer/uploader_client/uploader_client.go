@@ -1,23 +1,38 @@
 package uploader_client
 
 import (
+	"Bit_Torrent_Project/client/client/structures"
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
-	"strings"
 	"time"
 )
 
-func ServerTCP(port string) error {
+func ServerTCP(port string, errChan chan error) error {
 	// Setting SSL certificate
-	cert, err := tls.LoadX509KeyPair("./SSL/cert.pem", "./SSL/key.pem")
+	cert, err := tls.LoadX509KeyPair("./SSL/server.pem", "./SSL/server.key")
 	if err != nil {
 		log.Fatalf("Error loading certificate: %v\n", err)
 	}
-	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}, ClientAuth: tls.RequireAndVerifyClientCert}
+
+	certpool := x509.NewCertPool()
+	pem, err := ioutil.ReadFile("./SSL/ca.pem")
+	if err != nil {
+		log.Fatalf("Failed to read client certificate authority: %v", err)
+	}
+	if !certpool.AppendCertsFromPEM(pem) {
+		log.Fatalf("Can't parse client certificate authority")
+	}
+
+	tlsCfg := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    certpool,
+	}
 
 	l, listenErr := tls.Listen("tcp", port, tlsCfg)
 	if listenErr != nil {
@@ -26,6 +41,7 @@ func ServerTCP(port string) error {
 	}
 	defer l.Close()
 
+	// Handle connections
 	for {
 		c, err := l.Accept()
 
@@ -43,52 +59,40 @@ func ServerTCP(port string) error {
 				log.Print(x509.MarshalPKIXPublicKey(v.PublicKey))
 			}
 		}
+		doneChan := make(chan struct{})
+		go HandleTCPConnection(c, errChan, doneChan)
 
-		errChan := make(chan error)
-		go HandleTCPConnection(c, errChan)
-
-		go func(errChan chan error) {
-			for {
-				if connErr, ok := <-errChan; ok {
-					fmt.Println(connErr)
-					break
-				} else {
-					break
-				}
-			}
-		}(errChan)
+		if connErr := <-errChan; connErr != nil {
+			fmt.Println(connErr)
+		}
+		<-doneChan
+		// go func() {
+		// 	for {
+		// 		if connErr, ok := <-errChan; ok {
+		// 			log.Fatalln(connErr)
+		// 			break
+		// 		}
+		// 	}
+		// }()
 	}
 }
 
-func HandleTCPConnection(c net.Conn, errorChan chan error) {
-	var buf = bufio.NewReader(c)
+func HandleTCPConnection(c net.Conn, errChan chan error, doneChan chan struct{}) {
 	for {
-		deadlineErr := c.SetReadDeadline(time.Now().Add(10 * time.Second))
+		deadlineErr := c.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if deadlineErr != nil {
 			fmt.Println(deadlineErr)
-			errorChan <- deadlineErr
+			errChan <- deadlineErr
 			break
 		}
-		netData, err := buf.ReadString('\n')
+		deserializedMessage, err := structures.Deserialize(bufio.NewReader(c))
+		log.Println(deserializedMessage)
 		if err != nil {
 			fmt.Println(err)
-			errorChan <- err
-			break
-		}
-		if strings.TrimSpace(string(netData)) == "STOP" {
-			fmt.Println("Exiting TCP server!")
-		}
-
-		fmt.Print("-> ", string(netData))
-		t := time.Now()
-		myTime := t.Format(time.RFC3339) + "\n"
-		_, writeErr := c.Write([]byte(myTime))
-
-		if writeErr != nil {
-			log.Fatalf("Error while writing to the connection: %v\n", writeErr)
-			errorChan <- writeErr
+			errChan <- err
 			break
 		}
 
 	}
+	close(doneChan)
 }
