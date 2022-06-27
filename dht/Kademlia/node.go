@@ -7,7 +7,7 @@ import (
 	"strconv"
 )
 
-//representation of the Node in the network
+// NetworkNode representation of the Node in the network
 type NetworkNode struct {
 	//ID with be a binary nuber of 20 bytes
 	ID []byte
@@ -22,7 +22,7 @@ type node struct {
 	*NetworkNode
 }
 
-//NewNetworckNode constructor of NetworkNode
+// NewNetworkNode constructor of NetworkNode
 func NewNetworkNode(ip string, port string) *NetworkNode {
 	p, _ := strconv.Atoi(port)
 	return &NetworkNode{
@@ -31,7 +31,7 @@ func NewNetworkNode(ip string, port string) *NetworkNode {
 	}
 }
 
-//constructor of node
+// NewNode constructor of node
 func newNode(netNode *NetworkNode) *node {
 	n := &node{}
 	n.NetworkNode = netNode
@@ -120,12 +120,12 @@ func (l *nodeList) AppendUniqueNetworkNodes(nodes []*NetworkNode) {
 	}
 }
 
-//Append NetworkNodes of nodes that are not in l
+// AppendUnique NetworkNodes of nodes that are not in l
 func (l *nodeList) AppendUnique(nodes []*node) {
 	for _, n := range nodes {
 		exists := false
 		for _, aux := range l.Nodes {
-			if bytes.Compare(aux.ID, n.ID) == 0 {
+			if bytes.Equal(aux.ID, n.ID) {
 				exists = true
 				break
 			}
@@ -136,6 +136,7 @@ func (l *nodeList) AppendUnique(nodes []*node) {
 	}
 }
 
+//Len return number of nodes in list
 func (l *nodeList) Len() int {
 	return len(l.Nodes)
 }

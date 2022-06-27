@@ -12,11 +12,11 @@ import (
 )
 
 const (
-	//max number of nodes in a bucket
+	//K max number of nodes in a bucket
 	K = 20
-	//max number of parallel on network calls
+	// ALPHA max number of parallel on network calls
 	ALPHA = 3
-	//number of bits in infohash space
+	// B number of bits in infohash space
 	B = 160
 )
 
