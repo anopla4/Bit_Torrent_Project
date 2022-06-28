@@ -188,6 +188,40 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 		}, nil
 
 	}
+	if queryName == "announce_peer" {
+		if len(args) != 4 {
+			return nil, newProtocolError("four arguments required for announce_peer request and " + string(len(args)) + " were given")
+		}
+		_, in := args["id"]
+		if !in {
+			return nil, newProtocolError("id argument required for announce_peer request")
+		}
+		_, in = args["info_hash"]
+		if !in {
+			return nil, newProtocolError("info_hash argument required for announce_peer request")
+		}
+		_, in = args["token"]
+		if !in {
+			return nil, newProtocolError("token argument required for announce_peer request")
+		}
+		_, in = args["port"]
+		if !in {
+			return nil, newProtocolError("port argument required for announce_peer request")
+		}
+		tid, err := newTransactionID()
+		if err != nil {
+			return nil, newGenericError("error while getting transactionID")
+		}
+		return &QueryMessage{
+			message: message{
+				TransactionID: tid,
+				TypeOfMessage: "q",
+			},
+			QueryName: queryName,
+			Arguments: args,
+		}, nil
+
+	}
 	return nil, newMethodUnknownError("method name not valid")
 }
 
@@ -197,7 +231,94 @@ type ResponseMessage struct {
 	Response map[string]interface{} `bencode:"r"`
 }
 
-//TODO newResponceMessage
+func newResponseMessage(queryName string, tid string, args map[string]interface{}) (*ResponseMessage, krpcErroInt) {
+	if queryName == "ping" {
+		if len(args) != 1 {
+			return nil, newProtocolError("one argument required for ping Response and " + string(len(args)) + "were given")
+		}
+		_, in := args["id"]
+		if !in {
+			return nil, newProtocolError("invalid argument for ping message")
+		}
+
+		return &ResponseMessage{
+			message: message{
+				TransactionID: tid,
+				TypeOfMessage: "r",
+			},
+			Response: args,
+		}, nil
+
+	}
+	if queryName == "get_peers" {
+		if len(args) != 3 {
+			return nil, newProtocolError("three arguments required for get_peers response and " + string(len(args)) + " were given")
+		}
+		_, in := args["id"]
+		if !in {
+			return nil, newProtocolError("id argument required for get_peers response")
+		}
+		_, in = args["token"]
+		if !in {
+			return nil, newProtocolError("token argument required for find_node response")
+		}
+		_, inPeer := args["values"]
+		_, inNodes := args["nodes"]
+		if !inPeer && !inNodes {
+			return nil, newProtocolError("one of values or nodes arguments are required for get_peers response")
+		}
+		if inPeer && inNodes {
+			return nil, newProtocolError("values and nodes arguments can not be both in get_peers response")
+		}
+		return &ResponseMessage{
+			message: message{
+				TransactionID: tid,
+				TypeOfMessage: "r",
+			},
+			Response: args,
+		}, nil
+
+	}
+	if queryName == "find_node" {
+		if len(args) != 2 {
+			return nil, newProtocolError("two arguments required for find_node response and " + string(len(args)) + " were given")
+		}
+		_, in := args["id"]
+		if !in {
+			return nil, newProtocolError("id argument required for find_node response")
+		}
+		_, in = args["nodes"]
+		if !in {
+			return nil, newProtocolError("nodes argument required for find_node response")
+		}
+		return &ResponseMessage{
+			message: message{
+				TransactionID: tid,
+				TypeOfMessage: "r",
+			},
+			Response: args,
+		}, nil
+
+	}
+	if queryName == "announce_peer" {
+		if len(args) != 1 {
+			return nil, newProtocolError("one argument required for announce_peer response and " + string(len(args)) + " were given")
+		}
+		_, in := args["id"]
+		if !in {
+			return nil, newProtocolError("id argument required for announce_peer response")
+		}
+		return &ResponseMessage{
+			message: message{
+				TransactionID: tid,
+				TypeOfMessage: "r",
+			},
+			Response: args,
+		}, nil
+
+	}
+	return nil, newMethodUnknownError("method name not valid")
+}
 
 func newTransactionID() (string, error) {
 	tid := make([]byte, 1)
