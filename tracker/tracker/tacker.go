@@ -2,13 +2,14 @@ package tracker
 
 import (
 	"context"
-	"fmt"
-	_ "encoding/json"  // testing
+	_ "encoding/json"
 	_ "flag"
+	"fmt"
 	_ "log"
 	"math/rand"
 	"net"
 	"time"
+
 	_ "google.golang.org/grpc" // testing
 
 	pb "Bit_Torrent_Project/tracker/trackerpb"
@@ -35,26 +36,14 @@ type ParseAnnounce struct {
 	Request    bool   // Indica si quiere recibir peers
 }
 
-// AnnounceResponse es una representacion de una respuesta a un announce get query
-//type AnnounceResponse struct {
-//	Interval   uint16
-//	TrackerID  string
-//	Complete   uint64
-//	Incomplete uint64
-//	Peers      map[string]string
-//}
-
 //PeersPool es un diccionario que mapea el peerID con un Peer
 type PeersPool map[string]*PeerTk
 
 //PeerTk es la representacion de un Peer para la el Tracker
 type PeerTk struct {
-	ID         string
-	Addr       *net.TCPAddr
-	State      string // Uno entre: seeder, started, completed or stopped
-	//Uploaded   uint64
-	//Downloaded uint64
-	//LeftDown   uint64
+	ID    string       `json:"peer_id"`
+	Addr  *net.TCPAddr `json:"peer_addr"`
+	State string       `json:"peer_state"` // Uno entre: seeder, started, completed or stopped
 }
 
 //TorrentsPool es un diccionario que mapea metainfoHash con la informacion del torrent file
@@ -62,23 +51,21 @@ type TorrentsPool map[string]*TorrentTk
 
 // TorrentTk es la representacion de un archivo torrent para el tracker
 type TorrentTk struct {
-	Hash       string
-	Downloaded uint64
-	Complete   uint64
-	Peers      PeersPool
+	Hash       string    `json:"infoHash"`
+	Downloaded uint64    `json:"downloaded"`
+	Complete   uint64    `json:"complete"`
+	Peers      PeersPool `json:"peers"`
 }
 
 //TrackerServer es la representacion de la estructura del tracker
 type TrackerServer struct {
-	//AnnReq     ParseAnnounce
-	//AnnResp    AnnounceResponse
 	pb.UnimplementedTrackerServer
-	TkID       string
-	Interval   uint32
-	IP         net.IP
-	Port       int32
-	ListenAddr *net.Listener
-	Torrents   TorrentsPool
+	TkID       string        `json:"tk_Id"`
+	Interval   uint32        `json:"interval"`
+	IP         net.IP        `json:"ip"`
+	Port       int32         `json:"port"`
+	ListenAddr *net.Listener `json:"listen_addr"`
+	Torrents   TorrentsPool  `json:"torrents_pool"`
 }
 
 //Publish maneja el servicio Publish request del tracker recibiendo un PublishQuery y devolviendo un PublishResponse
@@ -185,11 +172,11 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 //para representar un conjunto de enteros
 type intset map[int]interface{}
 
-//devuelve las estadisticas de complete e incomplete para un torrent 
-func (pp PeersPool) torrentStats()(complete, incomplete int64){
-	complete, incomplete = 0,0
-	for _ , v := range pp {
-		switch v.State{
+//devuelve las estadisticas de complete e incomplete para un torrent
+func (pp PeersPool) torrentStats() (complete, incomplete int64) {
+	complete, incomplete = 0, 0
+	for _, v := range pp {
+		switch v.State {
 		case "stopped":
 		case "started":
 			incomplete++
@@ -229,14 +216,14 @@ func (pp PeersPool) getRandomPeers(excludeID string, numwant int) (map[string]st
 		if k != excludeID {
 			if _, found := excludes[i]; found {
 				delete(excludes, i)
-			}else{
-				switch v.State{
+			} else {
+				switch v.State {
 				case "stopped":
 				case "started":
 				default:
 					count++
 					peers[v.ID] = v.Addr.String()
-				}	
+				}
 			}
 		}
 		if count == numwant-1 {
@@ -301,23 +288,23 @@ func announceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 }
 
 //Scrape procesa el servio Scrape del Tracker tomando un ScraperQuery y devolviendo un ScraperResponse
-func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.ScraperResponse, error){
+func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.ScraperResponse, error) {
 	infoHashes, err := ParseScraperRequest(sc)
 	var sr pb.ScraperResponse
-	if err != nil{
+	if err != nil {
 		sr.FailureReason = err.Error()
 		return &sr, err
 	}
 	tt := tk.Torrents
 	files := make(map[string]*pb.File, len(infoHashes))
-	for _, ih := range infoHashes{
-		if ttk, found := tt[ih]; found{
+	for _, ih := range infoHashes {
+		if ttk, found := tt[ih]; found {
 			_, incomplete := ttk.Peers.torrentStats()
 			files[ih] = &pb.File{
-								Incomplete:incomplete,
-								Complete: int64(ttk.Complete),
-								Downloaded: int64(ttk.Downloaded),
-								}
+				Incomplete: incomplete,
+				Complete:   int64(ttk.Complete),
+				Downloaded: int64(ttk.Downloaded),
+			}
 		}
 	}
 	sr.Files = files
@@ -326,17 +313,16 @@ func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.S
 
 //ParseScraperRequest valida la peticion de un ScrapeQuery y devuelve la lista de infoHashes
 // que fueron requeridos
-func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error){
+func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error) {
 	infoHashes := sc.GetInfoHash()
 	n := len(infoHashes)
-	if n == 0{
+	if n == 0 {
 		err := fmt.Errorf("No se especifica ningun infoHash")
 		return nil, err
 	}
 	parseInfoHashes := make([]string, n)
-	for idx, ih := range infoHashes{
+	for idx, ih := range infoHashes {
 		parseInfoHashes[idx] = string(ih[:])
 	}
 	return parseInfoHashes, nil
 }
-
