@@ -221,16 +221,17 @@ func (rt *routingTable) getRandomIDFromBucket(b int) []byte {
 }
 
 //put node at the top(normally last seen node)
-func (rt *routingTable) updateBucketOfNode(node []byte) {
+func (rt *routingTable) updateBucketOfNode(node *node) {
 	<-rt.lock
 	defer func() { rt.lock <- struct{}{} }()
 
-	indexBucket := rt.getFirstDifBitBucketIndex(node)
+	indexBucket := rt.getFirstDifBitBucketIndex(node.ID)
 
-	indexNode := rt.nodeInBucket(node, indexBucket)
+	indexNode := rt.nodeInBucket(node.ID, indexBucket)
 
 	if indexNode == -1 {
-		panic(errors.New("The node does not exist."))
+		rt.table[indexBucket].bucket = append(rt.table[indexBucket].bucket, node)
+		rt.table[indexBucket].lastChanged = time.Now()
 	} else {
 		bucket := rt.table[indexBucket].bucket
 		n := bucket[indexNode]

@@ -31,6 +31,30 @@ func NewNetworkNode(ip string, port string) *NetworkNode {
 	}
 }
 
+func (n *node) CompactInfo() []byte {
+	info := make([]byte, len(n.ID))
+	copy(info, n.ID)
+	info = append(info, n.IP...)
+	info = append(info, uint8(n.port))
+	return info
+}
+
+func newNodeFromCompactInfo(info []byte) *node {
+	n := &node{}
+	id := make([]byte, 20)
+	copy(id, info[:20])
+	ipB := make([]byte, 16)
+	copy(ipB, info[20:36])
+	ip := net.IP(ipB)
+	portB := make([]byte, 2)
+	copy(portB, info[36:])
+	port := uint16(portB[0])<<8 + uint16(portB[1])
+	n.ID = id
+	n.IP = ip
+	n.port = int(port)
+	return n
+}
+
 // NewNode constructor of node
 func newNode(netNode *NetworkNode) *node {
 	n := &node{}
