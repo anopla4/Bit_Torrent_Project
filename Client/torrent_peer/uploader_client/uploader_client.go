@@ -1,7 +1,7 @@
 package uploader_client
 
 import (
-	"Bit_Torrent_Project/client/client/structures"
+	"Bit_Torrent_Project/client/client/communication"
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,8 +9,11 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
+
+var connectionsGroup = sync.WaitGroup{}
 
 func ServerTCP(port string, errChan chan error) error {
 	// Setting SSL certificate
@@ -34,6 +37,7 @@ func ServerTCP(port string, errChan chan error) error {
 		ClientCAs:    certpool,
 	}
 
+	// Start listening for new connections
 	l, listenErr := tls.Listen("tcp", port, tlsCfg)
 	if listenErr != nil {
 		fmt.Println(listenErr)
@@ -49,7 +53,7 @@ func ServerTCP(port string, errChan chan error) error {
 			log.Fatalf("Error while accepting next connection: %v\n", err)
 			return err
 		}
-		log.Printf("Connection accepted: %v\n", c)
+		log.Println("Connection accepted")
 
 		tlsCon, ok := c.(*tls.Conn)
 		if ok {
@@ -59,40 +63,29 @@ func ServerTCP(port string, errChan chan error) error {
 				log.Print(x509.MarshalPKIXPublicKey(v.PublicKey))
 			}
 		}
-		doneChan := make(chan struct{})
-		go HandleTCPConnection(c, errChan, doneChan)
 
-		if connErr := <-errChan; connErr != nil {
-			fmt.Println(connErr)
-		}
-		<-doneChan
-		// go func() {
-		// 	for {
-		// 		if connErr, ok := <-errChan; ok {
-		// 			log.Fatalln(connErr)
-		// 			break
-		// 		}
-		// 	}
-		// }()
+		connectionsGroup.Add(1)
+		go HandleTCPConnection(c, errChan)
+
+		connectionsGroup.Wait()
 	}
 }
 
-func HandleTCPConnection(c net.Conn, errChan chan error, doneChan chan struct{}) {
+func HandleTCPConnection(c net.Conn, errChan chan error) {
 	for {
 		deadlineErr := c.SetReadDeadline(time.Now().Add(5 * time.Second))
 		if deadlineErr != nil {
-			fmt.Println(deadlineErr)
 			errChan <- deadlineErr
 			break
 		}
-		deserializedMessage, err := structures.Deserialize(bufio.NewReader(c))
-		log.Println(deserializedMessage)
+		deserializedMessage, err := communication.Deserialize(bufio.NewReader(c))
 		if err != nil {
 			fmt.Println(err)
 			errChan <- err
 			break
 		}
+		log.Println(deserializedMessage.ID)
 
 	}
-	close(doneChan)
+	connectionsGroup.Done()
 }
