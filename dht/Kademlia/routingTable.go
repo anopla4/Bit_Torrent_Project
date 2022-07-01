@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"net"
 	"sort"
-	"strconv"
 	"time"
 )
 
@@ -53,7 +52,7 @@ func newRoutingTable(options *Options) (*routingTable, error) {
 	for i := 0; i <= B; i++ {
 		rt.table = append(rt.table, newKbucket())
 	}
-	if options.IP == "" || options.Port == "" {
+	if options.IP == "" || options.Port == 0 {
 		return nil, errors.New("Port and IP required")
 	}
 	rt.setIP(options.IP)
@@ -68,12 +67,8 @@ func (rt *routingTable) setIP(ip string) {
 	rt.Self.IP = net.ParseIP(ip)
 }
 
-func (rt *routingTable) setPort(port string) error {
-	p, err := strconv.Atoi(port)
-	if err == nil {
-		return err
-	}
-	rt.Self.port = p
+func (rt *routingTable) setPort(port int) error {
+	rt.Self.port = port
 	return nil
 }
 func (rt *routingTable) resetLastTimeChanged(bucket int) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net"
+	"strconv"
 
 	"github.com/jackpal/bencode-go"
 )
@@ -17,13 +18,15 @@ type Server struct {
 	Error      error
 }
 
-func newServer(ip string, port int, handlerDHT handlerDHT) {
+func newServer(ip string, port int, handlerDHT handlerDHT) *Server {
 	server := &Server{}
 	server.ip = net.ParseIP(ip)
 	server.handlerDHT = handlerDHT
+
+	return server
 }
 
-func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBytes int) error {
+func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBytes int) {
 	msgQ := &QueryMessage{}    //To check if the message is a query
 	msgR := &ResponseMessage{} //To check if the message is a query
 	msgErr := &krpcError{}
@@ -51,7 +54,6 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 				log.Println("error while writting to addr: " + addr.String())
 				panic(err)
 			}
-			return nil
 		}
 		//manage find_node
 		if msgQ.QueryName == "find_node" {
@@ -71,7 +73,6 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 				log.Println("error while writting to addr: " + addr.String())
 				panic(err)
 			}
-			return nil
 		}
 		//manage get_peers
 		if msgQ.QueryName == "find_peers" {
@@ -91,7 +92,6 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 				log.Println("error while writting to addr: " + addr.String())
 				panic(err)
 			}
-			return nil
 		}
 
 		//manage announce_peers
@@ -112,19 +112,21 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 				log.Println("error while writting to addr: " + addr.String())
 				panic(err)
 			}
-			return nil
 		}
 	}
+	//TODO:
 	// message correspond to a response
 	if err := bencode.Unmarshal(buf, msgR); err == nil {
-		//TODO
-		return nil
+		go s.handlerDHT.getResponse(msgR, addr.String())
+		return
 	}
-
-	return errors.New("request type not found")
+	s.handlerDHT.checkAddrInRoutingTable(addr.String())
+	panic(errors.New("request type not found"))
 }
-func (s *Server) RunServer(exit chan string) {
-	l, err := net.ListenPacket("udp", s.ip.String()+":"+string(s.port))
+
+// RunServer run a server to listen message from peers in network
+func (s *Server) RunServer(exit chan string, conn chan *net.PacketConn) {
+	l, err := net.ListenPacket("udp", s.ip.String()+":"+strconv.Itoa(s.port))
 	if err != nil {
 		exit <- err.Error()
 	}
@@ -135,7 +137,7 @@ func (s *Server) RunServer(exit chan string) {
 			panic(err)
 		}
 	}()
-
+	conn <- &l
 	for {
 		buf := make([]byte, 1024)
 		bytesRead, addr, err := l.ReadFrom(buf)

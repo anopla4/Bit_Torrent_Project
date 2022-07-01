@@ -200,10 +200,10 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 		if !in {
 			return nil, newProtocolError("info_hash argument required for announce_peer request")
 		}
-		_, in = args["token"]
-		if !in {
-			return nil, newProtocolError("token argument required for announce_peer request")
-		}
+		// _, in = args["token"]
+		// if !in {
+		// 	return nil, newProtocolError("token argument required for announce_peer request")
+		// }
 		_, in = args["port"]
 		if !in {
 			return nil, newProtocolError("port argument required for announce_peer request")
@@ -258,10 +258,10 @@ func newResponseMessage(queryName string, tid string, args map[string]interface{
 		if !in {
 			return nil, newProtocolError("id argument required for get_peers response")
 		}
-		_, in = args["token"]
-		if !in {
-			return nil, newProtocolError("token argument required for find_node response")
-		}
+		// _, in = args["token"]
+		// if !in {
+		// 	return nil, newProtocolError("token argument required for find_node response")
+		// }
 		_, inPeer := args["values"]
 		_, inNodes := args["nodes"]
 		if !inPeer && !inNodes {
