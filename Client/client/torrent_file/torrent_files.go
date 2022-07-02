@@ -5,7 +5,6 @@ import (
 	"Bit_Torrent_Project/client/client/tracker_communication"
 	"Bit_Torrent_Project/client/torrent_peer"
 	"bytes"
-	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
 	"net"
@@ -113,12 +112,7 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 
 }
 
-func (tf *TorrentFile) DownloadTo(path string) error {
-	var peerID [20]byte
-	_, err := rand.Read(peerID[:])
-	if err != nil {
-		return err
-	}
+func (tf *TorrentFile) DownloadTo(path string, peerID string) error {
 
 	peersDict := tracker_communication.RequestPeers(tf.Announce, tf.Info.InfoHash, string(peerID[:]))
 
