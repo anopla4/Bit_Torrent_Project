@@ -17,6 +17,7 @@ type Client struct {
 	Connection net.Conn
 	Peer       peer.Peer
 	Choked     bool
+	Interested bool
 	Bitfield   communication.Bitfield
 	InfoHash   [20]byte
 	PeerId     string
@@ -31,6 +32,7 @@ func (c *Client) SendChoke() error {
 	return err
 }
 func (c *Client) SendInterested() error {
+	c.Interested = true
 	_, err := c.Connection.Write((&communication.Message{ID: communication.INTERESTED}).Serialize())
 	return err
 }
@@ -88,6 +90,7 @@ func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, e
 	return &Client{
 		Connection: c,
 		Choked:     true,
+		Interested: false,
 		Bitfield:   bf,
 		Peer:       peer,
 		InfoHash:   infoHash,

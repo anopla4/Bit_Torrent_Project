@@ -7,10 +7,13 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"fmt"
+	"io/fs"
+	"log"
 	"net"
 	"os"
 
 	"github.com/jackpal/bencode-go"
+	"github.com/thanhpk/randstr"
 )
 
 type BencodeTorrent struct {
@@ -95,6 +98,72 @@ type File struct {
 	Path   []string
 }
 
+func BuildTorrentFile(filePath string, dstPath string, trackerUrl string) error {
+	file, err := os.Open(filePath)
+
+	if err != nil {
+		log.Printf("Error while opening file: %v\n", err)
+		return err
+	}
+	defer file.Close()
+	// Name
+	name := file.Name()
+
+	// InfoHash
+	infoHash := []byte(randstr.Hex(10))
+	infoHashArr := [20]byte{}
+	copy(infoHashArr[:], infoHash)
+
+	// Piece length
+	pieceLength := 256
+
+	// File length
+	fi, StErr := file.Stat()
+	if StErr != nil {
+		return StErr
+	}
+
+	length := fi.Size()
+
+	// Pieces
+	buf := make([]byte, length)
+	_, bufErr := file.Read(buf)
+
+	if bufErr != nil {
+		return bufErr
+	}
+
+	pieces := [][20]byte{}
+	for i := 0; i < int(length)/pieceLength; i++ {
+		begin := i * pieceLength
+		end := (i + 1) * pieceLength
+		if end > len(buf) {
+			end = len(buf)
+		}
+		hash := sha1.Sum(buf[begin:end])
+		pieces = append(pieces, hash)
+	}
+
+	torrentFile := TorrentFile{
+		Announce: trackerUrl,
+		Info: TorrentInfo{
+			Name:        name,
+			InfoHash:    infoHashArr,
+			PieceLength: pieceLength,
+			Pieces:      pieces,
+			Length:      int(length),
+		},
+	}
+	var buffer bytes.Buffer
+	_ = bencode.Marshal(&buffer, torrentFile)
+	err = os.WriteFile(dstPath, buffer.Bytes(), fs.FileMode(os.O_WRONLY))
+	if err != nil {
+		log.Printf("Error while writing torrent file: %v\n", err)
+		return err
+	}
+	return nil
+}
+
 func OpenTorrentFile(path string) (*TorrentFile, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -113,8 +182,11 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 }
 
 func (tf *TorrentFile) DownloadTo(path string, peerID string) error {
-
-	peersDict := tracker_communication.RequestPeers(tf.Announce, tf.Info.InfoHash, string(peerID[:]))
+	c, err := tracker_communication.TrackerClient(tf.Announce)
+	peersDict := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]))
+	if err != nil {
+		return err
+	}
 
 	peers := make([]peer.Peer, 0, len(peersDict))
 
