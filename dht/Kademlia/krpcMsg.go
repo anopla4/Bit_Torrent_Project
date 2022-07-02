@@ -1,6 +1,9 @@
 package dht
 
-import "crypto/rand"
+import (
+	"crypto/rand"
+	"strconv"
+)
 
 type message struct {
 	TransactionID string `bencode:"t"`
@@ -116,7 +119,7 @@ type QueryMessage struct {
 func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessage, krpcErroInt) {
 	if queryName == "ping" {
 		if len(args) != 1 {
-			return nil, newProtocolError("one argument required for ping request and " + string(len(args)) + "were given")
+			return nil, newProtocolError("one argument required for ping request and " + strconv.Itoa(len(args)) + "were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -138,7 +141,7 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 	}
 	if queryName == "get_peers" {
 		if len(args) != 2 {
-			return nil, newProtocolError("two arguments required for get_peers request and " + string(len(args)) + " were given")
+			return nil, newProtocolError("two arguments required for get_peers request and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -164,7 +167,7 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 	}
 	if queryName == "find_node" {
 		if len(args) != 2 {
-			return nil, newProtocolError("two arguments required for find_node request and " + string(len(args)) + " were given")
+			return nil, newProtocolError("two arguments required for find_node request and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -190,7 +193,7 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 	}
 	if queryName == "announce_peer" {
 		if len(args) != 3 {
-			return nil, newProtocolError("four arguments required for announce_peer request and " + string(len(args)) + " were given")
+			return nil, newProtocolError("four arguments required for announce_peer request and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -234,7 +237,7 @@ type ResponseMessage struct {
 func newResponseMessage(queryName string, tid string, args map[string]interface{}) (*ResponseMessage, krpcErroInt) {
 	if queryName == "ping" {
 		if len(args) != 1 {
-			return nil, newProtocolError("one argument required for ping Response and " + string(len(args)) + "were given")
+			return nil, newProtocolError("one argument required for ping Response and " + strconv.Itoa(len(args)) + "were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -252,7 +255,7 @@ func newResponseMessage(queryName string, tid string, args map[string]interface{
 	}
 	if queryName == "get_peers" {
 		if len(args) != 3 {
-			return nil, newProtocolError("three arguments required for get_peers response and " + string(len(args)) + " were given")
+			return nil, newProtocolError("three arguments required for get_peers response and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -281,7 +284,7 @@ func newResponseMessage(queryName string, tid string, args map[string]interface{
 	}
 	if queryName == "find_node" {
 		if len(args) != 2 {
-			return nil, newProtocolError("two arguments required for find_node response and " + string(len(args)) + " were given")
+			return nil, newProtocolError("two arguments required for find_node response and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
@@ -302,7 +305,7 @@ func newResponseMessage(queryName string, tid string, args map[string]interface{
 	}
 	if queryName == "announce_peer" {
 		if len(args) != 1 {
-			return nil, newProtocolError("one argument required for announce_peer response and " + string(len(args)) + " were given")
+			return nil, newProtocolError("one argument required for announce_peer response and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {

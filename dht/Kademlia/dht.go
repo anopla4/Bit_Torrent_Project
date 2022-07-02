@@ -231,7 +231,7 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 			closestNode = nl.Nodes[0]
 		}
 	}
-	return nil, nil, nil
+	// return nil, nil, nil
 }
 
 func (dht *DHT) PenalizeNode(node *NetworkNode) {

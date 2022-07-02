@@ -35,12 +35,13 @@ func (n *node) CompactInfo() []byte {
 	info := make([]byte, len(n.ID))
 	copy(info, n.ID)
 	info = append(info, n.IP...)
-	info = append(info, uint8(n.port))
+	var h, l uint8 = uint8(n.port >> 8), uint8(n.port & 0xff)
+	portB := []byte{h, l}
+	info = append(info, portB...)
 	return info
 }
 
 func newNodeFromCompactInfo(info []byte) *node {
-	n := &node{}
 	id := make([]byte, 20)
 	copy(id, info[:20])
 	ipB := make([]byte, 16)
@@ -49,10 +50,8 @@ func newNodeFromCompactInfo(info []byte) *node {
 	portB := make([]byte, 2)
 	copy(portB, info[36:])
 	port := uint16(portB[0])<<8 + uint16(portB[1])
-	n.ID = id
-	n.IP = ip
-	n.port = int(port)
-	return n
+
+	return newNode(&NetworkNode{ID: id, port: int(port), IP: ip})
 }
 
 // NewNode constructor of node
@@ -71,7 +70,7 @@ func equalsNodes(n1 *NetworkNode, n2 *NetworkNode, letIDNil bool) bool {
 		if n1.ID == nil || n2.ID == nil {
 			return false
 		}
-		if bytes.Compare(n1.ID, n2.ID) != 0 {
+		if !bytes.Equal(n1.ID, n2.ID) {
 			return false
 		}
 	}
@@ -96,9 +95,9 @@ type nodeList struct {
 
 //x_or distance of two nodes
 func getDistance(id1 []byte, id2 []byte) *big.Int {
-	id1_ := new(big.Int).SetBytes(id1)
-	id2_ := new(big.Int).SetBytes(id2)
-	dist := new(big.Int).Xor(id1_, id2_)
+	id1N := new(big.Int).SetBytes(id1)
+	id2N := new(big.Int).SetBytes(id2)
+	dist := new(big.Int).Xor(id1N, id2N)
 	return dist
 }
 
@@ -112,16 +111,13 @@ func (l *nodeList) Less(i, j int) bool {
 	iDist := getDistance(l.Nodes[i].ID, l.Comparator)
 	jDist := getDistance(l.Nodes[j].ID, l.Comparator)
 
-	if iDist.Cmp(jDist) < 0 {
-		return true
-	}
-	return false
+	return iDist.Cmp(jDist) < 0
 }
 
 //remove a node from a listNode
 func (l *nodeList) RemoveNode(n *NetworkNode) {
 	for i := 0; i < l.Len(); i++ {
-		if bytes.Compare(l.Nodes[i].ID, n.ID) == 0 {
+		if bytes.Equal(l.Nodes[i].ID, n.ID) {
 			l.Nodes = append(l.Nodes[:i], l.Nodes[i+1:]...)
 			return
 		}
@@ -133,7 +129,7 @@ func (l *nodeList) AppendUniqueNetworkNodes(nodes []*NetworkNode) {
 	for _, n := range nodes {
 		exist := false
 		for _, aux := range l.Nodes {
-			if bytes.Compare(n.ID, aux.ID) == 0 {
+			if bytes.Equal(n.ID, aux.ID) {
 				exist = true
 				break
 			}

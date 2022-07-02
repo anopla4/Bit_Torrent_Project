@@ -122,7 +122,7 @@ func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int) int {
 
 //return the num nearest nodes to a node with ID nodeID
 func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
-	nl := &nodeList{}
+	nl := &nodeList{Comparator: nodeID}
 
 	<-rt.lock
 	defer func() { rt.lock <- struct{}{} }()
