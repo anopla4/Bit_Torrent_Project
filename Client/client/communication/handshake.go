@@ -7,7 +7,7 @@ import (
 
 type Handshake struct {
 	Pstr     string
-	PeerId   [20]byte
+	PeerId   string
 	InfoHash [20]byte
 }
 
@@ -69,8 +69,7 @@ func DeserializeHandshake(r io.Reader) (*Handshake, error) {
 	infoHash := [20]byte{}
 	_ = copy(infoHash[:], infoHashSl)
 
-	peerId := [20]byte{}
-	_ = copy(peerId[:], peerIdSl)
+	peerId := string(peerIdSl)
 
 	return &Handshake{Pstr: string(pstr), InfoHash: infoHash, PeerId: peerId}, nil
 }
