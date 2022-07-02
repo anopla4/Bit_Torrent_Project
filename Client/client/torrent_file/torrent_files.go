@@ -1,11 +1,14 @@
 package torrent_file
 
 import (
+	"Bit_Torrent_Project/client/client/peer"
+	"Bit_Torrent_Project/client/client/tracker_communication"
 	"Bit_Torrent_Project/client/torrent_peer"
 	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
 	"fmt"
+	"net"
 	"os"
 
 	"github.com/jackpal/bencode-go"
@@ -111,17 +114,22 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 }
 
 func (tf *TorrentFile) DownloadTo(path string) error {
-	// TODO Request peers to tracker
-
 	var peerID [20]byte
 	_, err := rand.Read(peerID[:])
 	if err != nil {
 		return err
 	}
 
-	torrent := torrent_peer.Torrent{
-		// TODO Add Peers
+	peersDict := tracker_communication.RequestPeers(tf.Announce, tf.Info.InfoHash, string(peerID[:]))
 
+	peers := make([]peer.Peer, 0, len(peersDict))
+
+	for k, v := range peersDict {
+		peers = append(peers, peer.Peer{Id: k, IP: net.ParseIP(v)})
+	}
+
+	torrent := torrent_peer.Torrent{
+		Peers:       peers,
 		PeerId:      peerID,
 		InfoHash:    tf.Info.InfoHash,
 		PiecesHash:  tf.Info.Pieces,
