@@ -21,12 +21,13 @@ type DHT struct {
 	// sendedToken  map[string]string
 }
 type Options struct {
-	ID             []byte
-	IP             string
-	Port           int
-	ExpirationTime time.Duration
-	RepublishTime  time.Duration
-	TimeToDie      time.Duration
+	ID                   []byte
+	IP                   string
+	Port                 int
+	ExpirationTime       time.Duration
+	RepublishTime        time.Duration
+	TimeToDie            time.Duration
+	TimeToRefreshBuckets time.Duration
 }
 
 type ExpectedResponse struct {
@@ -58,8 +59,24 @@ func newDHT(options *Options) *DHT {
 	dht.expectedResponses = map[string]*ExpectedResponse{}
 	return dht
 }
-func (dht *DHT) Ping() {
 
+func (dht *DHT) Ping(addr string) {
+	pingMsg, err := newQueryMessage("ping", map[string]interface{}{"id": string(dht.options.ID)})
+	if err != nil {
+		panic(err)
+	}
+	expResponse, errQ := dht.SendMessage(pingMsg, true, addr)
+	if errQ != nil {
+		panic(errQ)
+	}
+	respChan := expResponse.resChan
+	select {
+	case <-respChan:
+		return
+	case <-time.After(dht.options.TimeToDie):
+		dht.RemoveExpectedResponse([]byte(pingMsg.TransactionID))
+		//do something with penalize
+	}
 }
 
 // FindNode return a list with compactInfo of k nearest node to target
@@ -293,22 +310,83 @@ func (dht *DHT) checkForExpirationTime() {
 	}
 }
 
-func (dht *DHT) checkForRepublish() {
-	ticker := time.NewTicker(dht.options.RepublishTime)
+// func (dht *DHT) checkForRepublish() {
+// 	ticker := time.NewTicker(dht.options.RepublishTime)
+// 	for {
+// 		<-ticker.C
+// 		keysToRepublish, valuesToRepublish, err := dht.store.GetKeyValuesToRepublish(dht.options.RepublishTime)
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 		for i := 0; i < len(keysToRepublish); i++ {
+// 			go dht.AnnouncePeer(keysToRepublish[i], valuesToRepublish[i])
+// 		}
+// 	}
+// }
+
+func (dht *DHT) CheckExpectedResponses() {
+	ticker := time.NewTicker(2 * dht.options.TimeToDie)
+
 	for {
 		<-ticker.C
-		keysToRepublish, valuesToRepublish, err := dht.store.GetKeyValuesToRepublish(dht.options.RepublishTime)
-		if err != nil {
-			panic(err)
-		}
-		for i := 0; i < len(keysToRepublish); i++ {
-			go dht.AnnouncePeer(keysToRepublish[i], valuesToRepublish[i])
+		for key, value := range dht.expectedResponses {
+			if value.timeToDie.Before(time.Now()) {
+				delete(dht.expectedResponses, key)
+			}
 		}
 	}
 }
 
+func (dht *DHT) GetPeersToDownload(infohash []byte) ([]string, error) {
+	v, ok := dht.GetPeers(infohash)
+	if ok {
+		return v, nil
+	}
+	values, _, err := dht.LookUP(string(infohash), "get_peers")
+	if err != nil {
+		return nil, err
+	}
+	if values == nil {
+		return nil, errors.New("not peers fuond for infohash")
+	}
+	nodes := []string{}
+	for _, info := range values {
+		n := newNodeFromCompactInfo([]byte(info))
+		addr := net.TCPAddr{IP: n.IP, Port: n.port}
+		nodes = append(nodes, addr.String())
+	}
+	return nodes, nil
+}
+
+func (dht *DHT) RefreshBuckets() {
+	for i := 0; i < B; i++ {
+		go dht.RefreshBucket(i)
+	}
+}
+
+func (dht *DHT) RefreshBucket(bucket int) {
+	ticker := time.NewTicker(dht.options.TimeToRefreshBuckets)
+	for {
+		<-ticker.C
+		if dht.routingTable.lastChanged[bucket].Add(dht.options.TimeToRefreshBuckets).Before(time.Now()) {
+			id := dht.routingTable.getRandomIDFromBucket(bucket)
+			go dht.LookUP(string(id), "find_node")
+		}
+	}
+}
+
+func (dht *DHT) JoinNetwork(addr string) {
+	dht.Ping(addr)
+	go func() {
+		_, _, err := dht.LookUP(string(dht.options.ID), "find_node")
+		if err != nil {
+			panic(err)
+		}
+	}()
+}
+
 //TODO:
-//1- check for expected responses timeout(cases in not managed from client side)
-//2- JoinNetwork function
-//3- GetPeers function(using nodeLookUP)
-//4- Check Republish function
+//2- JoinNetwork function Creo q hecho
+//3- check bucket time Creo q hecho
+//4- implement penalize and unpenalize each time received a response from a node(last can be done in update function)
+//5- check the problem with republish

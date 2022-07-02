@@ -1,7 +1,7 @@
 package dht
 
 type kademlia interface {
-	Ping()
+	Ping(addr string)
 	Update(*node)
 	GetID() []byte
 	FindNode(target []byte) []string

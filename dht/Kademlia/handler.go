@@ -47,6 +47,8 @@ func (hd *handlerDHT) updateNodeOfResponse(msg *ResponseMessage, addr string) kr
 	nodeR.IP = addrUDP.IP
 	nodeR.port = addrUDP.Port
 
+	//TODO:
+	//actualizar en 0 la cantidad de respuestas
 	hd.dht.Update(nodeR)
 	return nil
 }
