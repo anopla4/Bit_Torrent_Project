@@ -2,7 +2,10 @@ package tracker_communication
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"strconv"
 	"trackerpb"
@@ -13,15 +16,7 @@ import (
 
 const PORT = "50051"
 
-func RequestPeers(trackerUrl string, infoHash [20]byte, peerId string) map[string]string {
-	cc, err := TrackerClient(trackerUrl)
-	defer cc.Close()
-
-	if err != nil {
-		log.Printf("Error while creating grpc tracker client: %v", err)
-		return nil
-	}
-
+func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string) map[string]string {
 	announceResp := Announce(trackerpb.NewTrackerClient(cc), infoHash, peerId)
 	return announceResp.GetPeers()
 }
@@ -29,15 +24,19 @@ func RequestPeers(trackerUrl string, infoHash [20]byte, peerId string) map[strin
 func TrackerClient(trackerUrl string) (*grpc.ClientConn, error) {
 	fmt.Println("Hello I'm a client")
 
-	certFile := "./SSL/ca.pem" // Certificate Authority Trust certificate
-	creds, sslErr := credentials.NewClientTLSFromFile(certFile, "")
-	if sslErr != nil {
-		log.Fatalf("Error while loading CA trust certificate: %v\n", sslErr)
-		return nil, sslErr
-	}
-	opts := grpc.WithTransportCredentials(creds)
+	certFile := "./client/tracker_communication/cert.pem" // Certificate Authority Trust certificate
+	keyFile := "./client/tracker_communication/key.pem"   // Certificate Authority Trust certificate
+
+	cert, _ := tls.LoadX509KeyPair(certFile, keyFile)
+	caCert, _ := ioutil.ReadFile(certFile)
+
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	tlsConfig := &tls.Config{RootCAs: caCertPool, Certificates: []tls.Certificate{cert}, InsecureSkipVerify: true}
+
+	opts := grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig))
 	cc, err := grpc.Dial(trackerUrl, opts)
-	// cc, err := grpc.Dial(trackerUrl, grpc.WithInsecure())
 
 	if err != nil {
 		log.Fatalf("Could not connect: %v", err)
@@ -59,7 +58,7 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string) *tracke
 	req := &trackerpb.PublishQuery{
 		InfoHash: infoHash[:],
 		PeerID:   peerId,
-		IP:       "192.168.169.14",
+		IP:       "192.168.169.14", // TODO Pass IP
 		Port:     int32(port),
 	}
 
@@ -81,6 +80,8 @@ func Announce(c trackerpb.TrackerClient, infoHash [20]byte, peerId string) *trac
 		PeerID:   peerId,
 		IP:       "192.168.169.14",
 		Port:     int32(port),
+		Event:    "request",
+		Request:  true,
 	}
 	ctx := context.Background()
 	res, err := c.Announce(ctx, req)
