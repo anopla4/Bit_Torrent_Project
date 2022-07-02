@@ -189,7 +189,7 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 
 	}
 	if queryName == "announce_peer" {
-		if len(args) != 4 {
+		if len(args) != 3 {
 			return nil, newProtocolError("four arguments required for announce_peer request and " + string(len(args)) + " were given")
 		}
 		_, in := args["id"]

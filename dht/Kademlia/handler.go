@@ -186,7 +186,7 @@ func (hd *handlerDHT) getResponse(msg *ResponseMessage, addr string) {
 				goto UPD
 			}
 			resChan := expResponse.resChan
-			resChan <- msg.Response
+			resChan <- msg
 		} else {
 			if expResponse.mess.TypeOfMessage == "get_peers" {
 				if _, in := msg.Response["id"]; !in {
@@ -204,7 +204,7 @@ func (hd *handlerDHT) getResponse(msg *ResponseMessage, addr string) {
 					goto UPD
 				}
 				resChan := expResponse.resChan
-				resChan <- msg.Response
+				resChan <- msg
 			} else {
 				if expResponse.mess.TypeOfMessage == "ping" {
 					if _, in := msg.Response["id"]; !in {
@@ -214,7 +214,7 @@ func (hd *handlerDHT) getResponse(msg *ResponseMessage, addr string) {
 						goto UPD
 					}
 					resChan := expResponse.resChan
-					resChan <- msg.Response
+					resChan <- msg
 				}
 				// else {
 				// 	if expResponse.mess.TypeOfMessage == "announce_peer" {

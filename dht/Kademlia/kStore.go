@@ -154,7 +154,7 @@ func (st *KStore) ExpireKeys() error {
 }
 
 // GetKeyValuesToRepublish return string of the form key and values wich repTime is before time.Now
-func (st *KStore) GetKeyValuesToRepublish() ([]string, []string, error) {
+func (st *KStore) GetKeyValuesToRepublish(timeRep time.Duration) ([]string, []string, error) {
 	<-st.lock
 	defer func() { st.lock <- struct{}{} }()
 
@@ -167,6 +167,7 @@ func (st *KStore) GetKeyValuesToRepublish() ([]string, []string, error) {
 			value := aux[1]
 			keysToRepublish = append(keysToRepublish, key)
 			valueToRepublish = append(valueToRepublish, value)
+			st.republishTimeMap[keyKD] = time.Now().Add(timeRep)
 		}
 	}
 	return keysToRepublish, valueToRepublish, nil

@@ -2,16 +2,19 @@ package dht
 
 import (
 	"bytes"
+	"errors"
+	"math"
 	"net"
+	"sort"
 	"strconv"
 	"time"
 
 	"github.com/jackpal/bencode-go"
 )
 
-type dht struct {
+type DHT struct {
 	routingTable      *routingTable
-	store             KStore
+	store             *KStore
 	options           *Options
 	conn              *net.PacketConn
 	expectedResponses map[string]*ExpectedResponse
@@ -30,23 +33,37 @@ type ExpectedResponse struct {
 	idQuery      []byte
 	mess         *QueryMessage
 	recieverADDR string
-	resChan      chan map[string]interface{}
+	resChan      chan *ResponseMessage
 	timeToDie    time.Time
 }
 
-func (dht *dht) Update(node *node) {
+func (dht *DHT) Update(node *node) {
 	dht.routingTable.updateBucketOfNode(node)
 }
 
-func (dht *dht) GetID() []byte {
+func (dht *DHT) GetID() []byte {
 	return dht.options.ID
 }
-func (dht *dht) Ping() {
+
+func newDHT(options *Options) *DHT {
+	dht := &DHT{}
+	dht.options = options
+
+	rt, _ := newRoutingTable(options)
+	dht.routingTable = rt
+
+	st := NewKStore()
+	dht.store = st
+
+	dht.expectedResponses = map[string]*ExpectedResponse{}
+	return dht
+}
+func (dht *DHT) Ping() {
 
 }
 
 // FindNode return a list with compactInfo of k nearest node to target
-func (dht *dht) FindNode(target []byte) []string {
+func (dht *DHT) FindNode(target []byte) []string {
 	nl := dht.routingTable.getNearestNodes(K, target)
 	nodesInfo := []string{}
 	for _, n := range nl.Nodes {
@@ -56,7 +73,7 @@ func (dht *dht) FindNode(target []byte) []string {
 }
 
 // GetPeers returns addr of peer containing the infohash in case it is in the storage or k nearest nodes in other case(also true in first casem false otherwise)
-func (dht *dht) GetPeers(infohash []byte) ([]string, bool) {
+func (dht *DHT) GetPeers(infohash []byte) ([]string, bool) {
 	if values, ok := dht.store.data[string(infohash)]; ok {
 		return values, true
 	}
@@ -65,7 +82,7 @@ func (dht *dht) GetPeers(infohash []byte) ([]string, bool) {
 }
 
 // Store save info in dht storage
-func (dht *dht) Store(infohash []byte, ip string, port string) error {
+func (dht *DHT) Store(infohash []byte, ip string, port string) error {
 	expTime := time.Now().Add(dht.options.ExpirationTime)
 	repTime := time.Now().Add(dht.options.RepublishTime)
 	portI, _ := strconv.Atoi(port)
@@ -74,18 +91,157 @@ func (dht *dht) Store(infohash []byte, ip string, port string) error {
 	return err
 }
 
-func (dht *dht) GetExpextedResponse(transactionID []byte) (*ExpectedResponse, bool) {
+func (dht *DHT) GetExpextedResponse(transactionID []byte) (*ExpectedResponse, bool) {
 	if expResponse, ok := dht.expectedResponses[string(transactionID)]; ok {
 		return expResponse, ok
 	}
 	return nil, false
 }
 
-func (dht *dht) RemoveExpectedResponse(transactionID []byte) {
+func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []string, err error) {
+	nl := dht.routingTable.getNearestNodes(ALPHA, []byte(id))
+
+	closestNode := nl.Nodes[0]
+
+	for {
+		expectedResponsesLU := make([]*ExpectedResponse, ALPHA)
+		for i := 0; i < int(math.Min(ALPHA, float64(nl.Len()))); i++ {
+			n := nl.Nodes[i]
+			addr := net.UDPAddr{IP: n.IP, Port: n.port}
+			q := &QueryMessage{}
+			if queryType == "find_node" {
+				var err krpcErroInt
+				q, err = newQueryMessage(queryType, map[string]interface{}{"id": string(n.ID), "target": id})
+				if err != nil {
+					return nil, nil, errors.New(err.ErrorKRPC())
+				}
+			} else {
+				if queryType == "get_peers" {
+					var err krpcErroInt
+					q, err = newQueryMessage(queryType, map[string]interface{}{"id": string(n.ID), "info_hash": id})
+					if err != nil {
+						return nil, nil, errors.New(err.ErrorKRPC())
+					}
+				} else {
+					return nil, nil, errors.New("not valid query type for node lookup")
+				}
+			}
+			er, err := dht.SendMessage(q, true, addr.String())
+			if err != nil {
+				return nil, nil, err
+			}
+			expectedResponsesLU[i] = er
+		}
+		respChan := make(chan *ResponseMessage)
+		for i := 0; i < len(expectedResponsesLU); i++ {
+			go func(r *ExpectedResponse, index int) {
+				select {
+				case response := <-r.resChan:
+					if response == nil {
+						dht.PenalizeNode(nl.Nodes[index])
+						dht.RemoveExpectedResponse(r.idQuery)
+						return
+					}
+					respChan <- response
+				case <-time.After(dht.options.TimeToDie):
+					dht.PenalizeNode(nl.Nodes[index])
+					dht.RemoveExpectedResponse(r.idQuery)
+					return
+				}
+			}(expectedResponsesLU[i], i)
+		}
+		results := []*ResponseMessage{}
+		expR := len(expectedResponsesLU)
+		if expR > 0 {
+		WAIT:
+			for {
+				select {
+				case result := <-respChan:
+					if result == nil {
+						expR--
+						continue
+					}
+					results = append(results, result)
+					if len(results) == expR {
+						close(respChan)
+						break WAIT
+					}
+				case <-time.After(dht.options.TimeToDie):
+					close(respChan)
+					break WAIT
+				}
+			}
+
+			for _, result := range results {
+				switch queryType {
+				case "find_node":
+					nodesInfo := result.Response["nodes"].([]string)
+					nodes := []*node{}
+					for _, nodeInfo := range nodesInfo {
+						nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
+					}
+					nl.AppendUnique(nodes)
+
+				case "get_peers":
+					if values, ok := result.Response["values"]; ok {
+						return values.([]string), nil, nil
+					} else {
+						nodesInfo := result.Response["nodes"].([]string)
+						nodes := []*node{}
+						for _, nodeInfo := range nodesInfo {
+							nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
+						}
+						nl.AppendUnique(nodes)
+					}
+
+				}
+			}
+
+		}
+		if nl.Len() == 0 {
+			return nil, nil, nil
+		}
+		sort.Sort(nl)
+		//no received node nearest than the last nearest one
+		if equalsNodes(nl.Nodes[0], closestNode, false) {
+			for _, n := range nl.Nodes {
+				nN := newNode(n)
+				info := nN.CompactInfo()
+				closest = append(closest, string(info))
+			}
+			return nil, closest, nil
+		} else {
+			closestNode = nl.Nodes[0]
+		}
+	}
+	return nil, nil, nil
+}
+
+func (dht *DHT) PenalizeNode(node *NetworkNode) {
+	return
+}
+func (dht *DHT) AnnouncePeer(key string, port int) {
+	_, nodesToRequest, err := dht.LookUP(key, "find_node")
+	if err != nil {
+		panic(err)
+	}
+	args := map[string]interface{}{"id": string(dht.options.ID), "info_hash": key, "port": port}
+	msg, errQ := newQueryMessage("announce_peer", args)
+	if err != nil {
+		panic(errQ)
+	}
+	for _, nodeInfo := range nodesToRequest {
+		n := newNodeFromCompactInfo([]byte(nodeInfo))
+		addr := net.UDPAddr{IP: n.IP, Port: n.port}
+		dht.SendMessage(msg, true, addr.String())
+	}
+}
+
+func (dht *DHT) RemoveExpectedResponse(transactionID []byte) {
 	delete(dht.expectedResponses, string(transactionID))
 }
 
-func (dht *dht) RunServer(exit chan string) {
+func (dht *DHT) RunServer(exit chan string) {
 	hd := handlerDHT{
 		dht: dht,
 	}
@@ -97,7 +253,7 @@ func (dht *dht) RunServer(exit chan string) {
 }
 
 // SendMessage send a query message to an addres throug dht.conn
-func (dht *dht) SendMessage(query *QueryMessage, expectingResponse bool, addr string) (*ExpectedResponse, error) {
+func (dht *DHT) SendMessage(query *QueryMessage, expectingResponse bool, addr string) (*ExpectedResponse, error) {
 	buffer := bytes.NewBuffer(make([]byte, 1024))
 	err := bencode.Marshal(buffer, query)
 	if err != nil {
@@ -117,6 +273,7 @@ func (dht *dht) SendMessage(query *QueryMessage, expectingResponse bool, addr st
 		expectedResponse.idQuery = []byte(query.TransactionID)
 		expectedResponse.mess = query
 		expectedResponse.recieverADDR = addr
+		expectedResponse.resChan = make(chan *ResponseMessage)
 		expectedResponse.timeToDie = time.Now().Add(dht.options.TimeToDie)
 		dht.expectedResponses[query.TransactionID] = expectedResponse
 		return expectedResponse, nil
@@ -124,3 +281,34 @@ func (dht *dht) SendMessage(query *QueryMessage, expectingResponse bool, addr st
 	return nil, nil
 
 }
+
+func (dht *DHT) checkForExpirationTime() {
+	ticker := time.NewTicker(dht.options.ExpirationTime)
+	for {
+		<-ticker.C
+		err := dht.store.ExpireKeys()
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func (dht *DHT) checkForRepublish() {
+	ticker := time.NewTicker(dht.options.RepublishTime)
+	for {
+		<-ticker.C
+		keysToRepublish, valuesToRepublish, err := dht.store.GetKeyValuesToRepublish(dht.options.RepublishTime)
+		if err != nil {
+			panic(err)
+		}
+		for i := 0; i < len(keysToRepublish); i++ {
+			go dht.AnnouncePeer(keysToRepublish[i], valuesToRepublish[i])
+		}
+	}
+}
+
+//TODO:
+//1- check for expected responses timeout(cases in not managed from client side)
+//2- JoinNetwork function
+//3- GetPeers function(using nodeLookUP)
+//4- Check Republish function

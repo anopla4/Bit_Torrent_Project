@@ -148,5 +148,6 @@ func (s *Server) RunServer(exit chan string, conn chan *net.PacketConn) {
 			break
 		}
 		go s.HandleMessage(l, addr, buf, bytesRead)
+
 	}
 }
