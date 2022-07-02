@@ -10,7 +10,7 @@ import (
 
 type Torrent struct {
 	Peers       []peer.Peer
-	PeerId      [20]byte
+	PeerId      string
 	InfoHash    [20]byte
 	PiecesHash  [][20]byte
 	PieceLength int
