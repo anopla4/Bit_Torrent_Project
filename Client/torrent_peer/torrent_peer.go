@@ -4,6 +4,7 @@ import (
 	"Bit_Torrent_Project/client/client/communication"
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/torrent_peer/downloader_client"
+	"fmt"
 	"net"
 	"strconv"
 	"time"
@@ -18,7 +19,7 @@ type Client struct {
 	Choked     bool
 	Bitfield   communication.Bitfield
 	InfoHash   [20]byte
-	PeerId     [20]byte
+	PeerId     string
 }
 
 func (c *Client) SendUnchoke() error {
@@ -48,11 +49,51 @@ func (c *Client) SendRequest(index int, begin int, length int) error {
 	return err
 }
 
-func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId [20]byte, errChan chan error) (*Client, error) {
-	cc := downloader_client.StartClientTCP(string(peer.IP)+":"+strconv.Itoa(int(peer.Port)), errChan)
+func RecvBitfield(conn net.Conn) (communication.Bitfield, error) {
+	_ = conn.SetDeadline(time.Now().Add(5 * time.Second))
+	defer conn.SetDeadline(time.Time{}) // Disable the deadline
 
-	defer cc.Close()
-	return nil, nil
+	msg, err := communication.Deserialize(conn)
+	if err != nil {
+		return nil, err
+	}
+	if msg == nil {
+		err := fmt.Errorf("Expected bitfield but got %v", msg)
+		return nil, err
+	}
+	if msg.ID != communication.BITFIELD {
+		err := fmt.Errorf("Expected bitfield but got ID %d", msg.ID)
+		return nil, err
+	}
+
+	return msg.Payload, nil
+}
+
+func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, errChan chan error) (*Client, error) {
+	c, err := downloader_client.StartClientTCP(string(peer.IP)+":"+strconv.Itoa(int(peer.Port)), infoHash, peerId, errChan)
+	if err != nil {
+		errChan <- err
+		return nil, err
+	}
+
+	defer c.Close()
+
+	bf, bfErr := RecvBitfield(c)
+
+	if bfErr != nil {
+		errChan <- bfErr
+		return nil, bfErr
+	}
+
+	return &Client{
+		Connection: c,
+		Choked:     true,
+		Bitfield:   bf,
+		Peer:       peer,
+		InfoHash:   infoHash,
+		PeerId:     peerId,
+	}, nil
+
 }
 
 func DownloadPiece(c *Client, task *pieceTask) (*pieceResult, error) {
@@ -130,8 +171,17 @@ func (t *Torrent) StartPeerDownload(peer peer.Peer, tasks chan *pieceTask, respo
 	defer client.Connection.Close()
 
 	// Wait for being unchoked and send interested message
-	client.SendUnchoke()
-	client.SendInterested()
+	err = client.SendUnchoke()
+	if err != nil {
+		errChan <- err
+		return
+	}
+
+	err = client.SendInterested()
+	if err != nil {
+		errChan <- err
+		return
+	}
 
 	for {
 		if task, ok := <-tasks; ok {
