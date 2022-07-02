@@ -35,6 +35,11 @@ func (bf Bitfield) HasPiece(index int) bool {
 func (bf Bitfield) SetPiece(index int) {
 	byteIndex := index / 8
 	offset := index % 8
+	// silently discard invalid bounded index
+	if byteIndex < 0 || byteIndex >= len(bf) {
+		return
+	}
+
 	bf[byteIndex] |= 1 << (7 - offset)
 }
 
