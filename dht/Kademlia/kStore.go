@@ -2,6 +2,7 @@ package dht
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -18,10 +19,9 @@ type KStore struct {
 //NewKStore return a new instance of KStore
 func NewKStore() *KStore {
 	st := &KStore{}
-
 	st.data = map[string][]string{}
 	st.lock = make(chan struct{})
-	st.lock <- struct{}{}
+	go func() { st.lock <- struct{}{} }()
 	st.expirationTimeMap = map[string]time.Time{}
 	st.republishTimeMap = map[string]time.Time{}
 
@@ -42,7 +42,9 @@ func (st *KStore) checkKeyValuePair(key string, value string) bool {
 // Store add a new key, value pair to the storage
 func (st *KStore) Store(key []byte, data []byte, expirationTime time.Time, republishTime time.Time) error {
 	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+	defer func() {
+		go func() { st.lock <- struct{}{} }()
+	}()
 	if time.Now().After(expirationTime) || time.Now().After(republishTime) {
 		return errors.New("expiration time and republish time have to be after current time")
 	}
@@ -70,24 +72,24 @@ func (st *KStore) Store(key []byte, data []byte, expirationTime time.Time, repub
 				st.data[keyString] = append(st.data[keyString][:index], append([]string{dataString}, st.data[keyString][index:]...)...)
 			}
 		}
-		st.expirationTimeMap[keyString] = expirationTime
-		st.republishTimeMap[keyString] = republishTime
+		st.expirationTimeMap[keyKD] = expirationTime
+		st.republishTimeMap[keyKD] = republishTime
 		return nil
 	}
 	st.data[keyString] = []string{dataString}
-	st.expirationTimeMap[keyString] = expirationTime
-	st.republishTimeMap[keyString] = republishTime
+	st.expirationTimeMap[keyKD] = expirationTime
+	st.republishTimeMap[keyKD] = republishTime
 	return nil
 }
 
-// GetValue return data for given key, error if the key is not in storage
-func (st *KStore) GetValues(key []byte) ([]string, error) {
+// GetValues return data for given key, error if the key is not in storage
+func (st *KStore) GetValues(key []byte) ([]string, bool) {
 	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+	defer func() { go func() { st.lock <- struct{}{} }() }()
 	if data, in := st.data[string(key)]; in {
-		return data, nil
+		return data, true
 	}
-	return []string{}, errors.New("Not value found for given key")
+	return []string{}, false
 }
 
 // GetAllPairs return all pairs in store
@@ -100,7 +102,7 @@ func (st *KStore) GetAllPairs() (map[string][]string, error) {
 // Remove delete key if exist in store
 func (st *KStore) Remove(key []byte) bool {
 	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+	defer func() { go func() { st.lock <- struct{}{} }() }()
 	keyString := string(key)
 	if _, in := st.data[keyString]; in {
 		delete(st.data, keyString)
@@ -115,20 +117,23 @@ func (st *KStore) Remove(key []byte) bool {
 	return false
 }
 
-func (st *KStore) RemoveKeyValue(key string, value string) bool {
-	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+// RemoveKeyValue delete key, value pair
+func (st *KStore) RemoveKeyValue(key string, value string, blocked bool) bool {
+	if !blocked {
+		<-st.lock
+		defer func() { go func() { st.lock <- struct{}{} }() }()
+	}
 	if _, in := st.data[key]; in {
 		index := sort.SearchStrings(st.data[key], value)
 		if index == len(st.data[key]) || st.data[key][index] != value {
 			return false
-		} else {
-			if len(st.data[key]) == 1 {
-				delete(st.data, key)
-			} else {
-				st.data[key] = append(st.data[key][:index], st.data[key][index+1:]...)
-			}
 		}
+		if len(st.data[key]) == 1 {
+			delete(st.data, key)
+		} else {
+			st.data[key] = append(st.data[key][:index], st.data[key][index+1:]...)
+		}
+
 		return true
 	}
 	return false
@@ -137,15 +142,20 @@ func (st *KStore) RemoveKeyValue(key string, value string) bool {
 // ExpireKeys delete key, value pairs expired
 func (st *KStore) ExpireKeys() error {
 	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+	defer func() { go func() { st.lock <- struct{}{} }() }()
 
 	for keyKD, expTime := range st.expirationTimeMap {
+		fmt.Println(keyKD)
+		fmt.Println(strings.Split(keyKD, "/data:")[0])
+		// fmt.Println(strings.Split(keyKD, "/data:")[1])
+
 		if time.Now().After(expTime) {
 			// delete(st.data, key)
+
 			keyS := strings.Split(keyKD, "/data:")
 			key := keyS[0]
 			value := keyS[1]
-			st.RemoveKeyValue(key, value)
+			st.RemoveKeyValue(key, value, true)
 			delete(st.expirationTimeMap, keyKD)
 			delete(st.republishTimeMap, keyKD)
 		}
@@ -156,7 +166,7 @@ func (st *KStore) ExpireKeys() error {
 // GetKeyValuesToRepublish return string of the form key and values wich repTime is before time.Now
 func (st *KStore) GetKeyValuesToRepublish(timeRep time.Duration) ([]string, []string, error) {
 	<-st.lock
-	defer func() { st.lock <- struct{}{} }()
+	defer func() { go func() { st.lock <- struct{}{} }() }()
 
 	keysToRepublish := []string{}
 	valueToRepublish := []string{}
