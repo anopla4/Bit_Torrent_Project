@@ -133,3 +133,5 @@ client/go.mod
 client/go.sum
 client/generate.sh
 client/SSL
+client/client/tracker_communication/cert.pem
+client/client/tracker_communication/key.pem
