@@ -2,16 +2,21 @@ package tracker
 
 import (
 	"context"
-	_ "encoding/json"
+	//_ "encoding/json"
 	_ "flag"
 	"fmt"
-	_ "log"
+
+	//_ "log"
 	"math/rand"
 	"net"
+	"sync"
 	"time"
 
-	_ "google.golang.org/grpc" // testing
+	//"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
+	//_ "google.golang.org/grpc" // testing
 
+	ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
 
@@ -20,11 +25,21 @@ const (
 	OK            = 1
 	ALREADYEXISTT = 2
 	ALREADYEXISTP = 3
+
+	ALREADYKNOWOK = 4
+	UNKNOWNREDKEY = 5
+	FAILEDIP      = 6
+	FAILEDPORT    = 7
+)
+
+//constantes de tiempo
+const (
+	INTERVALTKTKTIME = 600
 )
 
 // ParseAnnounce es una representacion de una announce get query
 type ParseAnnounce struct {
-	InfoHash   string //dic bencodificado
+	InfoHash   string //del torrent
 	PeerID     string // Id del peer
 	IP         net.IP //Ip del peer Opcional
 	Port       int    // Port del peer Opcional
@@ -57,6 +72,15 @@ type TorrentTk struct {
 	Peers      PeersPool `json:"peers"`
 }
 
+// BkTracker es la representacion de un backoup tracker para el tracker
+type BkTracker struct {
+	IP   net.IP `json:"ip"`
+	Port int    `json:"port"`
+}
+
+//TrackersPool es un diccionario que mapea un addr con su tracker correspondiente
+type TrackersPool map[string]*BkTracker
+
 //TrackerServer es la representacion de la estructura del tracker
 type TrackerServer struct {
 	pb.UnimplementedTrackerServer
@@ -65,14 +89,26 @@ type TrackerServer struct {
 	IP         net.IP        `json:"ip"`
 	Port       int32         `json:"port"`
 	ListenAddr *net.Listener `json:"listen_addr"`
-	Torrents   TorrentsPool  `json:"torrents_pool"`
+	sync.RWMutex
+	Torrents TorrentsPool `json:"torrents_pool"`
+
+	//Tracker to Tracker Comunication Block
+	ttp.UnimplementedTrackerComunicationServer
+	RedKey          string
+	BackoupTrackers TrackersPool `json:"bk_trackers"`
 }
 
 //Publish maneja el servicio Publish request del tracker recibiendo un PublishQuery y devolviendo un PublishResponse
 func (tk *TrackerServer) Publish(ctx context.Context, pq *pb.PublishQuery) (*pb.PublishResponse, error) {
+	if p, ok:= peer.FromContext(ctx); ok{
+		fmt.Println(p)
+	}
+	fmt.Println("Incoming publish... ")
+
+
 	ih := pq.GetInfoHash()
 	if ih == nil || len(ih) != 20 {
-		err := fmt.Errorf("InfoHash invalido")
+		err := fmt.Errorf("Invalid InfoHash")
 		return nil, err
 	}
 	infoHash := string(ih[:])
@@ -91,6 +127,8 @@ func (tk *TrackerServer) Publish(ctx context.Context, pq *pb.PublishQuery) (*pb.
 		err := fmt.Errorf("No se especifica el puerto")
 		return nil, err
 	}
+	tk.Lock()
+	defer tk.Unlock()
 	status := tk.publishTorrent(infoHash, peerID, int(port), ip)
 	return &pb.PublishResponse{
 		Status: status,
@@ -129,6 +167,11 @@ func (tk *TrackerServer) publishTorrent(infoHash, peerID string, port int, ip ne
 
 //Announce maneja el servicio Announce request del tracker recibiendo un AnnounceQuery y devolviendo un AnnounceResponse
 func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (*pb.AnnounceResponse, error) {
+	if p, ok:= peer.FromContext(ctx); ok{
+		fmt.Println(p)
+	}
+	fmt.Println("Incoming Announce... ")
+
 	pa, err := announceQueryCheck(annq)
 	var ar pb.AnnounceResponse
 	if err != nil {
@@ -138,6 +181,8 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 	event := pa.Event
 	request := pa.Request
 	infoHash := pa.InfoHash
+	tk.RLock()
+	defer tk.RUnlock()
 	tt := tk.Torrents
 	if ttk, ok := tt[infoHash]; ok {
 		ptk, err := ttk.Peers.getPeer(pa.PeerID)
@@ -164,7 +209,7 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 		ar.Complete, ar.Incomplete = ttk.Peers.torrentStats()
 		return &ar, nil
 	}
-	err = fmt.Errorf("No coincide el infohash")
+	err = fmt.Errorf("Dont match the infohash")
 	ar.FailureReason = err.Error()
 	return &ar, err
 }
@@ -247,25 +292,25 @@ func (pp PeersPool) getPeer(id string) (*PeerTk, error) {
 func announceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 	infoHash := annPb.GetInfoHash()
 	if infoHash == nil || len(infoHash) != 20 {
-		err = fmt.Errorf("Infohash vacio")
+		err = fmt.Errorf("Empty Infohash")
 		return
 	}
 	pa.InfoHash = string(infoHash[:])
 	peerID := annPb.GetPeerID()
 	if peerID == "" {
-		err = fmt.Errorf("No se especifica el PeerID")
+		err = fmt.Errorf("Blank field:  PeerID")
 		return
 	}
 	pa.PeerID = peerID
 	ip := net.ParseIP(annPb.GetIP())
 	if ip == nil {
-		err = fmt.Errorf("Error con la IP")
+		err = fmt.Errorf("Unreacheable field: IP")
 		return
 	}
 	pa.IP = ip
 	port := annPb.GetPort()
 	if port == 0 {
-		err = fmt.Errorf("No se especifica el puerto")
+		err = fmt.Errorf("Unreacheable field: port")
 		return
 	}
 	pa.Port = int(port)
@@ -278,7 +323,7 @@ func announceQueryCheck(annPb *pb.AnnounceQuery) (pa ParseAnnounce, err error) {
 		numwant = 40
 	}
 	if event != "request" && event != "started" && event != "completed" && event != "stopped" {
-		err = fmt.Errorf("No se reconoce el evento especificado")
+		err = fmt.Errorf("Dont recognize the event especified. By protocol, event must be one among: request, started, stopped, completed")
 		return
 	}
 	pa.Event = event
@@ -295,6 +340,8 @@ func (tk *TrackerServer) Scrape(ctx context.Context, sc *pb.ScraperQuery) (*pb.S
 		sr.FailureReason = err.Error()
 		return &sr, err
 	}
+	tk.RLock()
+	defer tk.RUnlock()
 	tt := tk.Torrents
 	files := make(map[string]*pb.File, len(infoHashes))
 	for _, ih := range infoHashes {
@@ -317,7 +364,7 @@ func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error) {
 	infoHashes := sc.GetInfoHash()
 	n := len(infoHashes)
 	if n == 0 {
-		err := fmt.Errorf("No se especifica ningun infoHash")
+		err := fmt.Errorf("Empty infoHash")
 		return nil, err
 	}
 	parseInfoHashes := make([]string, n)
@@ -325,4 +372,81 @@ func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error) {
 		parseInfoHashes[idx] = string(ih[:])
 	}
 	return parseInfoHashes, nil
+}
+
+//Tracker to Tracker protocol
+
+//RePublish es el metodo para menejar la solicitud de RePublish entre los trackers
+func (tk *TrackerServer) RePublish(ctx context.Context, rpq *ttp.RePublishQuery) (*ttp.RePublishResponse, error) {
+	ih := rpq.GetInfoHash()
+	if ih == nil || len(ih) != 20 {
+		err := fmt.Errorf("Invalid InfoHash")
+		return nil, err
+	}
+	infoHash := string(ih[:])
+	peerID := rpq.GetPeerID()
+	if peerID == "" {
+		err := fmt.Errorf("No se especifica el PeerID")
+		return nil, err
+	}
+	ip := net.ParseIP(rpq.GetIP())
+	if ip == nil {
+		err := fmt.Errorf("Error con la IP")
+		return nil, err
+	}
+	port := rpq.GetPort()
+	if port == 0 {
+		err := fmt.Errorf("No se especifica el puerto")
+		return nil, err
+	}
+	tk.Lock()
+	defer tk.Unlock()
+	status := tk.publishTorrent(infoHash, peerID, int(port), ip)
+	return &ttp.RePublishResponse{
+		Status: status,
+	}, nil
+}
+
+//KnowMe es el metodo para manejar la solicitud KnowMeRequest entre los trackers
+func (tk *TrackerServer) KnowMe(ctx context.Context, kr *ttp.KnowMeRequest) (*ttp.KnowMeResponse, error) {
+	inKey := kr.GetRedKey()
+	port := kr.GetPort()
+	ip := net.ParseIP(kr.GetIP())
+	if ip == nil {
+		err := fmt.Errorf("Unreachable field: IP")
+		return &ttp.KnowMeResponse{
+			Status: FAILEDIP,
+
+			RepeatInterval: INTERVALTKTKTIME,
+		}, err
+	}
+	if port == 0 {
+		err := fmt.Errorf("Unreachable field: port")
+		return &ttp.KnowMeResponse{
+			Status:         FAILEDPORT,
+			RepeatInterval: INTERVALTKTKTIME,
+		}, err
+	}
+	tk.Lock()
+	if inKey != tk.RedKey {
+		err := fmt.Errorf("The <redKey> is incorrect")
+		return &ttp.KnowMeResponse{
+			Status:         UNKNOWNREDKEY,
+			RepeatInterval: INTERVALTKTKTIME,
+		}, err
+	}
+	hotsport := net.JoinHostPort(ip.String(), string(port))
+	bktks := tk.BackoupTrackers
+	if _, found := bktks[hotsport]; found {
+		return &ttp.KnowMeResponse{
+			Status:         ALREADYKNOWOK,
+			RepeatInterval: INTERVALTKTKTIME,
+		}, nil
+	}
+	bktks[hotsport] = &BkTracker{IP: ip, Port: int(port)}
+	tk.Unlock()
+	return &ttp.KnowMeResponse{
+		Status:         OK,
+		RepeatInterval: INTERVALTKTKTIME,
+	}, nil
 }
