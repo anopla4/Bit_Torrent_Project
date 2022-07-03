@@ -337,6 +337,8 @@ func HandleHave(c net.Conn, s *Server, msg *communication.Message, pc *PeerConne
 func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 	round := 0
 	optimisticChoked := PeerConnection{}
+	unchoked := []*PeerConnection{}
+
 	for {
 		uploadRateOrder := []*PeerConnection{}
 		forOptimisticUnchoke := []*PeerConnection{}
@@ -364,6 +366,8 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 		isContained := false
 		for _, peer := range uploadRateOrder[0:3] {
 			peer.SendUnchoke()
+			unchoked = append(unchoked, peer)
+
 			if peer.Peer == optimisticChoked.Peer {
 				isContained = true
 			}
@@ -371,6 +375,7 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 		if round%3 == 0 {
 			if !isContained {
 				optimisticChoked.SendUnchoke()
+				unchoked = append(unchoked, &optimisticChoked)
 			} else {
 				for len(forOptimisticUnchoke) > 0 {
 					forOptimisticUnchoke = []*PeerConnection{}
@@ -381,6 +386,8 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 					}
 					n := rand.Intn(len(forOptimisticUnchoke))
 					forOptimisticUnchoke[n].SendUnchoke()
+					unchoked = append(unchoked, forOptimisticUnchoke[n])
+
 					optimisticChoked = *forOptimisticUnchoke[n]
 					if forOptimisticUnchoke[n].PeerInterested {
 						break
@@ -388,7 +395,19 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 				}
 			}
 		}
-
+		for _, p := range peers {
+			if !contains(unchoked, p) {
+				p.SendChoke()
+			}
+		}
 		time.Sleep(10 * time.Second)
 	}
+}
+func contains(peers []*PeerConnection, peer *PeerConnection) bool {
+	for _, p := range peers {
+		if p == peer {
+			return true
+		}
+	}
+	return false
 }

@@ -4,7 +4,6 @@ import (
 	"Bit_Torrent_Project/client/client/communication"
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/torrent_peer/downloader_client"
-	"Bit_Torrent_Project/client/torrent_peer/uploader_client"
 	"context"
 	"fmt"
 	"log"
@@ -201,8 +200,8 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 	return &pieceResult{index: task.Index, piece: pp.buf}, nil
 }
 
-func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks chan *PieceTask, responses chan *pieceResult,
-	tc trackerpb.TrackerClient, IP net.IP, port string, peers []*Client, servers []*uploader_client.Server, cs *ConnectionsState,
+func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks []*PieceTask, responses chan *pieceResult,
+	tc trackerpb.TrackerClient, IP net.IP, port string, peers []*Client, cs *ConnectionsState,
 	errChan chan error) {
 	// Dial throw port and ip from peer
 	client, err := StartConnectionWithPeer(peer, t.InfoHash, t.PeerId, peers, errChan)
@@ -251,55 +250,62 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 	interval := tRes.GetInterval()
 
 	go t.KeepAliveToTracker(interval, IP, p, &left, dp, ctx, tc)
-
-	for {
-		if task, ok := <-tasks; ok {
-			// Ask for piece
-			if !client.Bitfield.HasPiece(task.Index) {
-				tasks <- task
-				continue
-			}
-
-			dp.requested += task.length
-
-			// Download piece
-			piece, err := DownloadPiece(client, task, cs)
-			if err != nil {
-				errChan <- err
-				tasks <- task
-				return
-			}
-
-			err = piece.check(task)
-			if err != nil {
-				errChan <- err
-				tasks <- task
-				continue
-			}
-
-			dp.bitfield.SetPiece(task.Index)
-			dp.pendingPieces--
-			dp.downloaded += task.length
-			dp.requested -= task.length
-			left -= uint64(task.length)
-			_ = client.SendHave(task.Index)
-
-			announce := trackerpb.AnnounceQuery{
-				InfoHash:   t.InfoHash[:],
-				PeerID:     t.PeerId,
-				IP:         IP.String(),
-				Port:       int32(p),
-				Event:      "request",
-				Left:       left,
-				Request:    false,
-				Downloaded: uint64(dp.downloaded),
-			}
-
-			tRes, tResErr = tc.Announce(ctx, &announce)
-			responses <- piece
-		} else {
+	mode := "Random First"
+	for len(tasks) > 0 {
+		i, psErr := SelectPiece(mode, tasks, peers)
+		task := tasks[i]
+		tasks = remove(tasks, i)
+		if psErr != nil {
+			errChan <- err
+			log.Printf("Error while selecting piece: %v\n", err)
 			break
 		}
+
+		// Ask for piece
+		if !client.Bitfield.HasPiece(tasks[i].Index) {
+			tasks = append(tasks, task)
+			continue
+		}
+
+		dp.requested += task.length
+
+		// Download piece
+		piece, err := DownloadPiece(client, task, cs)
+		if err != nil {
+			errChan <- err
+			tasks = append(tasks, task)
+			return
+		}
+
+		err = piece.check(task)
+		if err != nil {
+			errChan <- err
+			tasks = append(tasks, task)
+			continue
+		}
+		if mode == "random first" {
+			mode = "rarest first"
+		}
+		dp.bitfield.SetPiece(task.Index)
+		dp.pendingPieces--
+		dp.downloaded += task.length
+		dp.requested -= task.length
+		left -= uint64(task.length)
+		_ = client.SendHave(task.Index)
+
+		announce := trackerpb.AnnounceQuery{
+			InfoHash:   t.InfoHash[:],
+			PeerID:     t.PeerId,
+			IP:         IP.String(),
+			Port:       int32(p),
+			Event:      "request",
+			Left:       left,
+			Request:    false,
+			Downloaded: uint64(dp.downloaded),
+		}
+
+		tRes, tResErr = tc.Announce(ctx, &announce)
+		responses <- piece
 	}
 
 }
@@ -327,4 +333,8 @@ func (t *Torrent) KeepAliveToTracker(interval uint32, IP net.IP, port int, left 
 		time.Sleep(time.Duration(interval) * 1000000000)
 	}
 
+}
+
+func remove(slice []*PieceTask, s int) []*PieceTask {
+	return append(slice[:s], slice[s+1:]...)
 }
