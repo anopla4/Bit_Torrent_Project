@@ -132,6 +132,7 @@ dmypy.json
 /tracker/go.sum
 /client_ui/go.sum
 client/vendor
+client/info.json
 client/go.mod
 client/go.sum
 client/generate.sh
