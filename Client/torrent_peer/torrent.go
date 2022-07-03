@@ -3,7 +3,6 @@ package torrent_peer
 import (
 	"Bit_Torrent_Project/client/client/communication"
 	"Bit_Torrent_Project/client/client/peer"
-	"Bit_Torrent_Project/client/torrent_peer/uploader_client"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -68,18 +67,20 @@ func (t *Torrent) pieceLength(index int) int {
 	return t.PieceLength
 }
 
-func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, servers []*uploader_client.Server, cs *ConnectionsState, port string) ([]byte, error) {
+func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, cs *ConnectionsState, port string) ([]byte, error) {
 	log.Printf("Starting downloading %v file", t.Name)
 
 	// Channel of pieces downloads tasks to be completed
-	tasks := make(chan *PieceTask, len(t.PiecesHash))
+	// tasks := make(chan *PieceTask, len(t.PiecesHash))
+	tasks := []*PieceTask{}
 
 	// Channel of pieces results
 	responses := make(chan *pieceResult)
 
 	for i, p := range t.PiecesHash {
 		l := t.pieceLength(i)
-		tasks <- &PieceTask{Index: i, hash: p, length: l}
+		// tasks <- &PieceTask{Index: i, hash: p, length: l}
+		tasks = append(tasks, &PieceTask{Index: i, hash: p, length: l})
 	}
 
 	errChan := make(chan error, 1)
@@ -92,7 +93,7 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, servers []
 	}
 	peers := []*Client{}
 	for _, peer := range t.Peers {
-		go t.StartPeerDownload(dp, peer, tasks, responses, tc, IP, port, peers, servers, cs, errChan)
+		go t.StartPeerDownload(dp, peer, tasks, responses, tc, IP, port, peers, cs, errChan)
 	}
 
 	go Choke(peers, cs)
@@ -121,7 +122,6 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, servers []
 			break
 		}
 	}
-	close(tasks)
 	close(responses)
 	close(errChan)
 	return buf, nil
@@ -130,6 +130,7 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, servers []
 func Choke(peers []*Client, cs *ConnectionsState) {
 	round := 0
 	optimisticChoked := Client{}
+	unchoked := []*Client{}
 	for {
 		uploadRateOrder := []*Client{}
 		forOptimisticUnchoke := []*Client{}
@@ -157,6 +158,7 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 		isContained := false
 		for _, peer := range uploadRateOrder[0:3] {
 			peer.SendUnchoke()
+			unchoked = append(unchoked, peer)
 			if peer.PeerId == optimisticChoked.PeerId {
 				isContained = true
 			}
@@ -164,6 +166,7 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 		if round%3 == 0 {
 			if !isContained {
 				optimisticChoked.SendUnchoke()
+				unchoked = append(unchoked, &optimisticChoked)
 			} else {
 				for len(forOptimisticUnchoke) > 0 {
 					forOptimisticUnchoke = []*Client{}
@@ -174,6 +177,8 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 					}
 					n := rand.Intn(len(forOptimisticUnchoke))
 					forOptimisticUnchoke[n].SendUnchoke()
+					unchoked = append(unchoked, forOptimisticUnchoke[n])
+
 					optimisticChoked = *forOptimisticUnchoke[n]
 					if forOptimisticUnchoke[n].PeerInterested {
 						break
@@ -182,6 +187,20 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 			}
 		}
 
+		for _, p := range peers {
+			if !contains(unchoked, p) {
+				p.SendChoke()
+			}
+		}
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func contains(peers []*Client, peer *Client) bool {
+	for _, p := range peers {
+		if p == peer {
+			return true
+		}
+	}
+	return false
 }

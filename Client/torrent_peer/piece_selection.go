@@ -1,12 +1,11 @@
-package piece_selection
+package torrent_peer
 
 import (
-	"Bit_Torrent_Project/client/torrent_peer"
 	"errors"
 	"math/rand"
 )
 
-func SelectPiece(mode string, pieces []torrent_peer.PieceTask, peers []*torrent_peer.Client) (int, error) {
+func SelectPiece(mode string, pieces []*PieceTask, peers []*Client) (int, error) {
 	switch mode {
 	case "random first":
 		return RandomFirst(pieces), nil
@@ -17,11 +16,11 @@ func SelectPiece(mode string, pieces []torrent_peer.PieceTask, peers []*torrent_
 	}
 }
 
-func RandomFirst(pieces []torrent_peer.PieceTask) int {
+func RandomFirst(pieces []*PieceTask) int {
 	return rand.Intn(len(pieces))
 }
 
-func RarestFirst(pieces []torrent_peer.PieceTask, peers []*torrent_peer.Client) int {
+func RarestFirst(pieces []*PieceTask, peers []*Client) int {
 	p := 0
 	min := len(peers) + 1
 	for _, piece := range pieces {
@@ -34,7 +33,7 @@ func RarestFirst(pieces []torrent_peer.PieceTask, peers []*torrent_peer.Client) 
 	return p
 }
 
-func NumberOfPeers(peers []*torrent_peer.Client, index int) int {
+func NumberOfPeers(peers []*Client, index int) int {
 	count := 0
 	for _, p := range peers {
 		if p.Bitfield.HasPiece(index) {

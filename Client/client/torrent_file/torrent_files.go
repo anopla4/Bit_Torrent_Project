@@ -4,7 +4,6 @@ import (
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/client/tracker_communication"
 	"Bit_Torrent_Project/client/torrent_peer"
-	"Bit_Torrent_Project/client/torrent_peer/uploader_client"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -186,7 +185,7 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 
 }
 
-func (tf *TorrentFile) DownloadTo(path string, servers []*uploader_client.Server, cs *torrent_peer.ConnectionsState, peerID string) error {
+func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState, peerID string) error {
 	c, ctx, err := tracker_communication.TrackerClient(tf.Announce)
 	IP := net.IP("192.168.169.14")
 	peersDict := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]), IP, ctx)
@@ -212,7 +211,7 @@ func (tf *TorrentFile) DownloadTo(path string, servers []*uploader_client.Server
 	tc := trackerpb.NewTrackerClient(c)
 
 	p, _ := strconv.Atoi(port)
-	res, err := torrent.DownloadFile(tc, IP, servers, cs, port)
+	res, err := torrent.DownloadFile(tc, IP, cs, port)
 	if err != nil {
 		return err
 	}
