@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net"
 	"strconv"
 	"trackerpb"
 
@@ -16,12 +17,12 @@ import (
 
 const PORT = "50051"
 
-func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string) map[string]string {
-	announceResp := Announce(trackerpb.NewTrackerClient(cc), infoHash, peerId)
+func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string, IP net.IP, ctx context.Context) map[string]string {
+	announceResp := Announce(trackerpb.NewTrackerClient(cc), ctx, infoHash, IP, peerId)
 	return announceResp.GetPeers()
 }
 
-func TrackerClient(trackerUrl string) (*grpc.ClientConn, error) {
+func TrackerClient(trackerUrl string) (*grpc.ClientConn, context.Context, error) {
 	fmt.Println("Hello I'm a client")
 
 	certFile := "./client/tracker_communication/cert.pem" // Certificate Authority Trust certificate
@@ -40,13 +41,16 @@ func TrackerClient(trackerUrl string) (*grpc.ClientConn, error) {
 
 	if err != nil {
 		log.Fatalf("Could not connect: %v", err)
+		return nil, nil, err
 	}
 
-	return cc, nil
+	ctx := context.Background()
+
+	return cc, ctx, nil
 }
 
-func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string) *trackerpb.PublishResponse {
-	cc, err := TrackerClient(trackerUrl)
+func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP net.IP) *trackerpb.PublishResponse {
+	cc, ctx, err := TrackerClient(trackerUrl)
 	c := trackerpb.NewTrackerClient(cc)
 	defer cc.Close()
 	if err != nil {
@@ -58,11 +62,11 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string) *tracke
 	req := &trackerpb.PublishQuery{
 		InfoHash: infoHash[:],
 		PeerID:   peerId,
-		IP:       "192.168.169.14", // TODO Pass IP
+		IP:       IP.String(),
 		Port:     int32(port),
 	}
 
-	res, err := c.Publish(context.Background(), req)
+	res, err := c.Publish(ctx, req)
 
 	if err != nil {
 		log.Fatalf("Error while calling Publish RPC: %v", err)
@@ -72,24 +76,18 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string) *tracke
 	return res
 }
 
-func Announce(c trackerpb.TrackerClient, infoHash [20]byte, peerId string) *trackerpb.AnnounceResponse {
+func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte, IP net.IP, peerId string) *trackerpb.AnnounceResponse {
 	fmt.Println("Starting to do an Announce RPC...")
 	port, _ := strconv.Atoi(PORT)
 	req := &trackerpb.AnnounceQuery{
 		InfoHash: infoHash[:],
 		PeerID:   peerId,
-		IP:       "192.168.169.14",
+		IP:       IP.String(),
 		Port:     int32(port),
 		Event:    "request",
 		Request:  true,
 	}
-	ctx := context.Background()
 	res, err := c.Announce(ctx, req)
-	// if p, ok := peer.FromContext(ctx); ok {
-	// 	fmt.Println(p)
-	// }
-
-	// md, ok := metadata.FromIncomingContext(ctx)
 	if err != nil {
 		log.Fatalf("Error while calling Announce RPC: %v", err)
 	}
@@ -98,14 +96,14 @@ func Announce(c trackerpb.TrackerClient, infoHash [20]byte, peerId string) *trac
 	return res
 }
 
-func Scrape(c trackerpb.TrackerClient, infoHash [20]byte) *trackerpb.ScraperResponse {
+func Scrape(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte) *trackerpb.ScraperResponse {
 	fmt.Println("Starting to do a Scrape RPC...")
 
 	req := &trackerpb.ScraperQuery{
 		InfoHash: [][]byte{infoHash[:]},
 	}
 
-	res, err := c.Scrape(context.Background(), req)
+	res, err := c.Scrape(ctx, req)
 	if err != nil {
 		log.Fatalf("Error while calling Scrape RPC: %v", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/client/tracker_communication"
 	"Bit_Torrent_Project/client/torrent_peer"
+	"Bit_Torrent_Project/client/torrent_peer/uploader_client"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -11,10 +12,14 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
+	"trackerpb"
 
 	"github.com/jackpal/bencode-go"
 	"github.com/thanhpk/randstr"
 )
+
+const port = "50051"
 
 type BencodeTorrent struct {
 	Announce string
@@ -90,7 +95,7 @@ type TorrentInfo struct {
 	PieceLength int        `bencode:"piece_length"`
 	Pieces      [][20]byte `bencode:"pieces"`
 	Length      int        `bencode:"length"`
-	// Files       []File   `bencode:"files"`
+	// Files       []File   `bencode:"files"` // TODO
 }
 
 type File struct {
@@ -181,9 +186,10 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 
 }
 
-func (tf *TorrentFile) DownloadTo(path string, peerID string) error {
-	c, err := tracker_communication.TrackerClient(tf.Announce)
-	peersDict := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]))
+func (tf *TorrentFile) DownloadTo(path string, servers []*uploader_client.Server, cs *torrent_peer.ConnectionsState, peerID string) error {
+	c, ctx, err := tracker_communication.TrackerClient(tf.Announce)
+	IP := net.IP("192.168.169.14")
+	peersDict := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]), IP, ctx)
 	if err != nil {
 		return err
 	}
@@ -203,10 +209,34 @@ func (tf *TorrentFile) DownloadTo(path string, peerID string) error {
 		Length:      tf.Info.Length,
 		Name:        tf.Info.Name,
 	}
+	tc := trackerpb.NewTrackerClient(c)
 
-	res, err := torrent.DownloadFile()
+	p, _ := strconv.Atoi(port)
+	res, err := torrent.DownloadFile(tc, IP, servers, cs, port)
 	if err != nil {
 		return err
+	}
+	defer func() {
+		announce := trackerpb.AnnounceQuery{
+			InfoHash: tf.Info.InfoHash[:],
+			PeerID:   peerID,
+			IP:       IP.String(),
+			Port:     int32(p),
+			Event:    "stopped",
+		}
+		_, _ = tc.Announce(ctx, &announce)
+	}()
+
+	announce := trackerpb.AnnounceQuery{
+		InfoHash: tf.Info.InfoHash[:],
+		PeerID:   peerID,
+		IP:       IP.String(),
+		Port:     int32(p),
+		Event:    "completed",
+	}
+	_, tResErr := tc.Announce(ctx, &announce)
+	if tResErr != nil {
+		return tResErr
 	}
 
 	outFile, err := os.Create(path)
