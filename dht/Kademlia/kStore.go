@@ -2,7 +2,6 @@ package dht
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -131,7 +130,11 @@ func (st *KStore) RemoveKeyValue(key string, value string, blocked bool) bool {
 		if len(st.data[key]) == 1 {
 			delete(st.data, key)
 		} else {
-			st.data[key] = append(st.data[key][:index], st.data[key][index+1:]...)
+			l := make([]string, index)
+			copy(l, st.data[key][:index])
+			l = append(l, st.data[key][index+1:]...)
+			st.data[key] = l
+
 		}
 
 		return true
@@ -145,9 +148,6 @@ func (st *KStore) ExpireKeys() error {
 	defer func() { go func() { st.lock <- struct{}{} }() }()
 
 	for keyKD, expTime := range st.expirationTimeMap {
-		fmt.Println(keyKD)
-		fmt.Println(strings.Split(keyKD, "/data:")[0])
-		// fmt.Println(strings.Split(keyKD, "/data:")[1])
 
 		if time.Now().After(expTime) {
 			// delete(st.data, key)

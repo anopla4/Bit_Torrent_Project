@@ -2,6 +2,7 @@ package dht
 
 import (
 	"net"
+	"strings"
 )
 
 type handlerDHT struct {
@@ -19,7 +20,7 @@ func (hd *handlerDHT) updateNodeOfMessage(msg *QueryMessage, addr string) krpcEr
 		return newProtocolError("id key is required for ping request")
 	}
 	value := msg.Arguments["id"]
-	nodeQuerying.ID = value.([]byte)
+	nodeQuerying.ID = []byte(value)
 	addrUDP, errADDR := net.ResolveUDPAddr("udp", addr)
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
@@ -39,7 +40,7 @@ func (hd *handlerDHT) updateNodeOfResponse(msg *ResponseMessage, addr string) kr
 		return newProtocolError("id key is required")
 	}
 	value := msg.Response["id"]
-	nodeR.ID = value.([]byte)
+	nodeR.ID = []byte(value)
 	addrUDP, errADDR := net.ResolveUDPAddr("udp", addr)
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
@@ -55,8 +56,8 @@ func (hd *handlerDHT) updateNodeOfResponse(msg *ResponseMessage, addr string) kr
 
 // ResponsePing return message in response to a ping query
 func (hd *handlerDHT) ResponsePing(msg *QueryMessage, addr string) (*ResponseMessage, krpcErroInt) {
-	args := map[string]interface{}{}
-	args["id"] = hd.dht.GetID()
+	args := map[string]string{}
+	args["id"] = string(hd.dht.GetID())
 	msgResponse, err := newResponseMessage("ping", msg.TransactionID, args)
 	if err != nil {
 		return nil, err
@@ -83,12 +84,13 @@ func (hd *handlerDHT) ResponsePing(msg *QueryMessage, addr string) (*ResponseMes
 // ResponseFindNode return message in response to a find_node query
 func (hd *handlerDHT) ResponseFindNode(msg *QueryMessage, addr string) (*ResponseMessage, krpcErroInt) {
 	//arguments for response
-	args := map[string]interface{}{}
-	args["id"] = hd.dht.GetID()
+	args := map[string]string{}
+	args["id"] = string(hd.dht.GetID())
 
 	//find nearest node to target id
-	target := msg.Arguments["target"].([]byte)
-	args["nodes"] = hd.dht.FindNode(target)
+	target := []byte(msg.Arguments["target"])
+	nodes := strings.Join(hd.dht.FindNode(target), "//")
+	args["nodes"] = nodes
 
 	//create responce message instance
 	msgResponse, errK := newResponseMessage(msg.QueryName, msg.TransactionID, args)
@@ -104,8 +106,8 @@ func (hd *handlerDHT) ResponseFindNode(msg *QueryMessage, addr string) (*Respons
 // ResponseGetPeers return message in response to a get_peers query
 func (hd *handlerDHT) ResponseGetPeers(msg *QueryMessage, addr string) (*ResponseMessage, krpcErroInt) {
 	//arguments for response
-	args := map[string]interface{}{}
-	args["id"] = hd.dht.GetID()
+	args := map[string]string{}
+	args["id"] = string(hd.dht.GetID())
 
 	// //generate random token
 	// token := make([]byte, 1)
@@ -115,12 +117,12 @@ func (hd *handlerDHT) ResponseGetPeers(msg *QueryMessage, addr string) (*Respons
 	// //store token and addr of querying node
 	// hd.dht.sendedToken[string(token)] = addr
 
-	infohash := msg.Arguments["info_hash"].([]byte)
+	infohash := []byte(msg.Arguments["info_hash"])
 	peers, ok := hd.dht.GetPeers(infohash)
 	if ok {
-		args["values"] = peers
+		args["values"] = strings.Join(peers, "//")
 	} else {
-		args["nodes"] = peers
+		args["nodes"] = strings.Join(peers, "//")
 	}
 
 	//create responce message instance
@@ -136,16 +138,16 @@ func (hd *handlerDHT) ResponseGetPeers(msg *QueryMessage, addr string) (*Respons
 
 func (hd *handlerDHT) ResponseAnnouncePeers(msg *QueryMessage, addr string) (*ResponseMessage, krpcErroInt) {
 	//arguments for response
-	args := map[string]interface{}{}
-	args["id"] = hd.dht.GetID()
+	args := map[string]string{}
+	args["id"] = string(hd.dht.GetID())
 
-	infohash := msg.Arguments["info_hash"].([]byte)
-	port := msg.Arguments["port"].(string)
+	infohash := msg.Arguments["info_hash"]
+	port := msg.Arguments["port"]
 	ip, err := net.ResolveIPAddr("udp", addr)
 	if err != nil {
 		return nil, newGenericError(err.Error())
 	}
-	err = hd.dht.Store(infohash, ip.String(), port)
+	err = hd.dht.Store([]byte(infohash), ip.String(), port)
 	if err != nil {
 		return nil, newGenericError(err.Error())
 	}

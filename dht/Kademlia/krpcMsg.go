@@ -112,11 +112,11 @@ func newMethodUnknownError(errM string) *MethodUnknownError {
 // QueryMessage struct for query message in kademlia protocol
 type QueryMessage struct {
 	message
-	QueryName string                 `bencode:"q"`
-	Arguments map[string]interface{} `bencode:"a"`
+	QueryName string            `bencode:"q"`
+	Arguments map[string]string `bencode:"a"`
 }
 
-func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessage, krpcErroInt) {
+func newQueryMessage(queryName string, args map[string]string) (*QueryMessage, krpcErroInt) {
 	if queryName == "ping" {
 		if len(args) != 1 {
 			return nil, newProtocolError("one argument required for ping request and " + strconv.Itoa(len(args)) + "were given")
@@ -231,10 +231,10 @@ func newQueryMessage(queryName string, args map[string]interface{}) (*QueryMessa
 // ResponseMessage struct for response message in kademlia protocol
 type ResponseMessage struct {
 	message
-	Response map[string]interface{} `bencode:"r"`
+	Response map[string]string `bencode:"r"`
 }
 
-func newResponseMessage(queryName string, tid string, args map[string]interface{}) (*ResponseMessage, krpcErroInt) {
+func newResponseMessage(queryName string, tid string, args map[string]string) (*ResponseMessage, krpcErroInt) {
 	if queryName == "ping" {
 		if len(args) != 1 {
 			return nil, newProtocolError("one argument required for ping Response and " + strconv.Itoa(len(args)) + "were given")
@@ -254,8 +254,8 @@ func newResponseMessage(queryName string, tid string, args map[string]interface{
 
 	}
 	if queryName == "get_peers" {
-		if len(args) != 3 {
-			return nil, newProtocolError("three arguments required for get_peers response and " + strconv.Itoa(len(args)) + " were given")
+		if len(args) != 2 {
+			return nil, newProtocolError("two arguments required for get_peers response and " + strconv.Itoa(len(args)) + " were given")
 		}
 		_, in := args["id"]
 		if !in {
