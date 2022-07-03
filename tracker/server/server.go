@@ -6,9 +6,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/fs"
+
+	//"os"
+
+	//"io/fs"
 	"io/ioutil"
-	"os"
+	//"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -121,9 +124,9 @@ func loadTLSCredentials() (credentials.TransportCredentials, error) {
 }
 
 func loadBkTrackers() (tk.TrackersPool, error) {
-	btks, err := ioutil.ReadFile("bkdata/bktrackers.json")
+	btks, err := ioutil.ReadFile("data/bktrackers.json")
 	if err != nil {
-		log.Println("Failed to load backoup info: " + err.Error())
+		log.Println("Failed to load backup info: " + err.Error())
 		return make(tk.TrackersPool, 10), err
 	}
 	var bktkLoads = tk.TrackersPool{}
@@ -133,7 +136,7 @@ func loadBkTrackers() (tk.TrackersPool, error) {
 		return make(tk.TrackersPool, 10), err
 	}
 	if len(bktkLoads) == 0 {
-		log.Println("Empty backoup")
+		log.Println("Empty backup")
 		return make(tk.TrackersPool, 10), err
 	}
 	return bktkLoads, nil
@@ -142,13 +145,13 @@ func loadBkTrackers() (tk.TrackersPool, error) {
 func newTrackerServer(key string) *tk.TrackerServer {
 	return &tk.TrackerServer{Torrents: make(tk.TorrentsPool, 10),
 		RedKey:          key,
-		BackoupTrackers: make(tk.TrackersPool, 5)}
+		BackupTrackers: make(tk.TrackersPool, 5)}
 }
 
 func newTrackerServerFromLoad(key string) *tk.TrackerServer {
-	tstate, err := ioutil.ReadFile("bkdata/torrents.json")
+	tstate, err := ioutil.ReadFile("data/torrents.json")
 	if err != nil {
-		log.Println("Failed to load backoup info: " + err.Error())
+		log.Println("Failed to load backup info: " + err.Error())
 		return newTrackerServer(key)
 	}
 	var torrentsLoads = tk.TorrentsPool{}
@@ -158,12 +161,12 @@ func newTrackerServerFromLoad(key string) *tk.TrackerServer {
 		return newTrackerServer(key)
 	}
 	if len(torrentsLoads) == 0 {
-		log.Println("Empty backoup")
+		log.Println("Empty backup")
 		return newTrackerServer(key)
 	}
 	tt := &tk.TrackerServer{Torrents: torrentsLoads,
 		RedKey:          key,
-		BackoupTrackers: make(tk.TrackersPool, 5)}
+		BackupTrackers: make(tk.TrackersPool, 5)}
 	return tt
 }
 
@@ -186,7 +189,7 @@ func getNewBkTrackersAddrs(source string) (list.List, error) {
 	alreadyKnows, err := loadBkTrackers()
 	for _, t := range aTk {
 		if t.IP == nil || t.Port == 0 {
-			log.Println("Bad addres for new backoup tracker")
+			log.Println("Bad addres for new backup tracker")
 			continue
 		}
 		addr := fmt.Sprintf("%s:%s", t.IP.String(), fmt.Sprint(t.Port))
@@ -218,7 +221,7 @@ loop:
 		case bk := <-ch:
 			addr := fmt.Sprintf("%s:%s", bk.IP.String(), fmt.Sprint(bk.Port))
 			ts.Lock()
-			ts.BackoupTrackers[addr] = &bk
+			ts.BackupTrackers[addr] = &bk
 			ts.Unlock()
 		default:
 			continue
@@ -270,9 +273,9 @@ func saveTorrents(torrents *tk.TorrentsPool, wg *sync.WaitGroup) {
 		log.Println(fmt.Sprint(time.Now()) + ": Error while jsonMarshall was working :" + err.Error())
 		return
 	}
-	e := ioutil.WriteFile("bkdata/torrents.json", torJso, fs.FileMode(os.O_WRONLY))
+	e := ioutil.WriteFile("data/torrents.json", torJso, 0777)
 	if e != nil {
-		log.Println(fmt.Sprint(time.Now()) + ": Error " + e.Error())
+		log.Println(fmt.Sprint("Error>> " + e.Error()))
 	}
 }
 
@@ -283,10 +286,9 @@ func saveBkTk(bktrackers *tk.TrackersPool, wg *sync.WaitGroup) {
 		log.Println(fmt.Sprint(time.Now()) + ": Error while jsonMarshall was woring :" + err.Error())
 		return
 	}
-	e := ioutil.WriteFile("bkdata/bktrackers.json", bkTkJso, fs.FileMode(os.O_WRONLY))
+	e := ioutil.WriteFile("data/bktrackers.json", bkTkJso, 0777)
 	if e != nil {
-		log.Fatal("Shet")
-		log.Println(fmt.Sprint("Error " + e.Error()))
+		log.Println(fmt.Sprint("Error>> " + e.Error()))
 	}
 }
 
@@ -297,12 +299,13 @@ loop:
 		case <-ctx.Done():
 			break loop
 		default:
-			time.Sleep(time.Duration(saveTime))
+			time.Sleep(30 * time.Second)
+			log.Println("asa")
 			ts.RLock()
 			var wg sync.WaitGroup
 			wg.Add(2)
 			go saveTorrents(&ts.Torrents, &wg)
-			go saveBkTk(&ts.BackoupTrackers, &wg)
+			go saveBkTk(&ts.BackupTrackers, &wg)
 			wg.Wait()
 			ts.RUnlock()
 		}
@@ -311,7 +314,7 @@ loop:
 
 func main() {
 	saveTime := flag.Int("saveTime", 600, "seconds time between two save copies")
-	newBTkFromSource := flag.String("nBkTk", "", "set the path of json with backoup tracker directions")
+	newBTkFromSource := flag.String("nBkTk", "", "set the path of json with backup tracker directions")
 	redKeySeed := flag.String("redKey", "", "set the password for the tk to tk communication")
 	enableTlS := flag.Bool("tls", false, "enablecurity")
 	load := flag.Bool("load", false, "load state from source")
@@ -329,7 +332,7 @@ func main() {
 	var trackerServer *tk.TrackerServer
 	if *load {
 		trackerServer = newTrackerServerFromLoad(string(redKey[:]))
-		trackerServer.BackoupTrackers, _ = loadBkTrackers()
+		trackerServer.BackupTrackers, _ = loadBkTrackers()
 	} else {
 		trackerServer = newTrackerServer(string(redKey[:]))
 	}
@@ -352,11 +355,11 @@ func main() {
 	log.Printf("Server in: %s port:%d \n", *ip, *port)
 
 	if *newBTkFromSource == "" {
-		log.Println("No source for backoup tracker. Nothing happen, but the red is less strong")
+		log.Println("No source for backup tracker. Nothing happen, but the red is less strong")
 	} else {
 		tkQueue, err := getNewBkTrackersAddrs(*newBTkFromSource)
 		if err != nil {
-			log.Println("Problems loading backoup tracker. Nothing happen, but the red is less strong> " + err.Error())
+			log.Println("Problems loading backup tracker. Nothing happen, but the red is less strong> " + err.Error())
 		} else {
 			bkchanel := make(chan tk.BkTracker, tkQueue.Len())
 			go putBkTrackersIntoServer(ctx, trackerServer, bkchanel)

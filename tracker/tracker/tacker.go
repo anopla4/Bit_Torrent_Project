@@ -98,18 +98,18 @@ type TrackerServer struct {
 	//Tracker to Tracker Comunication Block
 	ttp.UnimplementedTrackerComunicationServer
 	RedKey          string
-	BackoupTrackers TrackersPool `json:"bk_trackers"`
+	BackupTrackers TrackersPool `json:"bk_trackers"`
 }
 
 //AddBkTracker agrega un BkTracker a la lista del tracker
 func (tk *TrackerServer) AddBkTracker(ip net.IP, port int) error {
 	addr := net.JoinHostPort(ip.String(), fmt.Sprint(port))
-	if _, found := tk.BackoupTrackers[addr]; found {
+	if _, found := tk.BackupTrackers[addr]; found {
 		err := fmt.Errorf("Already have this bktracker %s", addr)
 		log.Println(err.Error())
 		return err
 	}
-	tk.BackoupTrackers[addr] = &BkTracker{IP: ip, Port: port, LastSeen: time.Now()}
+	tk.BackupTrackers[addr] = &BkTracker{IP: ip, Port: port, LastSeen: time.Now()}
 	log.Printf("Bk Tracker register: %s \n", addr)
 	return nil
 }
@@ -464,7 +464,7 @@ func (tk *TrackerServer) KnowMe(ctx context.Context, kr *ttp.KnowMeRequest) (*tt
 		}, err
 	}
 	hotsport := net.JoinHostPort(ip.String(), string(port))
-	bktks := tk.BackoupTrackers
+	bktks := tk.BackupTrackers
 	if _, found := bktks[hotsport]; found {
 		return &ttp.KnowMeResponse{
 			Status:         ALREADYKNOWOK,
