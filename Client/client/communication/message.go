@@ -9,15 +9,16 @@ import (
 type IDMessage uint8
 
 const (
-	CHOKE         IDMessage = 0
-	UNCHOKE       IDMessage = 1
-	INTERESTED    IDMessage = 2
-	NOTINTERESTED IDMessage = 3
-	HAVE          IDMessage = 4
-	BITFIELD      IDMessage = 5
-	PIECE         IDMessage = 6
-	CANCEL        IDMessage = 7
-	REQUEST       IDMessage = 8
+	KEEPALIVE     IDMessage = 0
+	CHOKE         IDMessage = 1
+	UNCHOKE       IDMessage = 2
+	INTERESTED    IDMessage = 3
+	NOTINTERESTED IDMessage = 4
+	HAVE          IDMessage = 5
+	BITFIELD      IDMessage = 6
+	PIECE         IDMessage = 7
+	CANCEL        IDMessage = 8
+	REQUEST       IDMessage = 9
 )
 
 type Message struct {
@@ -126,4 +127,21 @@ func ParsePiece(index int, buf []byte, pieceMsg Message) (int, error) {
 	}
 	copy(buf[parsedBegin:], data)
 	return len(data), nil
+}
+
+func ParseRequest(requestMsg Message) (int, int, int, error) {
+	if requestMsg.ID != PIECE {
+		return 0, 0, 0, fmt.Errorf("Expected REQUEST (ID %d), got ID %d", HAVE, requestMsg.ID)
+	}
+	payload := requestMsg.Payload
+	if len(payload) < 12 {
+		return 0, 0, 0, fmt.Errorf("Payload too short. %d < 12", len(payload))
+	}
+	parsedIndex := int(binary.BigEndian.Uint32(payload[0:4]))
+	parsedBegin := int(binary.BigEndian.Uint32(payload[4:8]))
+	parsedLength := int(binary.BigEndian.Uint32(payload[8:12]))
+	if parsedLength > 16000 {
+		return 0, 0, 0, fmt.Errorf("Length to big: %d. Length must be less than 16000", parsedLength)
+	}
+	return parsedIndex, parsedBegin, parsedLength, nil
 }
