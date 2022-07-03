@@ -27,19 +27,19 @@ func newServer(ip string, port int, handlerDHT handlerDHT) *Server {
 }
 
 func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBytes int) {
-	msgQ := &QueryMessage{}    //To check if the message is a query
-	msgR := &ResponseMessage{} //To check if the message is a query
-	msgErr := &krpcError{}
+	var msgQ QueryMessage    //To check if the message is a query
+	var msgR ResponseMessage //To check if the message is a query
+	var msgErr krpcError
 	buf := bytes.NewBuffer(bufM[:nBytes])
 
-	if err := bencode.Unmarshal(buf, msgErr); err == nil {
+	if err := bencode.Unmarshal(buf, &msgErr); err == nil {
 		log.Println("error: " + msgErr.ErrorKRPC())
 		panic(msgErr.ErrorKRPC())
 	}
 	//message correspond to a query
-	if err := bencode.Unmarshal(buf, msgQ); err == nil {
+	if err := bencode.Unmarshal(buf, &msgQ); err == nil {
 		if msgQ.QueryName == "ping" {
-			msgResponse, errQ := s.handlerDHT.ResponsePing(msgQ, addr.String())
+			msgResponse, errQ := s.handlerDHT.ResponsePing(&msgQ, addr.String())
 			if errQ != nil {
 				log.Println("error: " + msgErr.ErrorKRPC())
 			}
@@ -57,7 +57,7 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 		}
 		//manage find_node
 		if msgQ.QueryName == "find_node" {
-			msgResponse, errQ := s.handlerDHT.ResponseFindNode(msgQ, addr.String())
+			msgResponse, errQ := s.handlerDHT.ResponseFindNode(&msgQ, addr.String())
 			//Pensar en hacer esta parte mas extensible
 			if errQ != nil {
 				log.Println("error: " + msgErr.ErrorKRPC())
@@ -76,7 +76,7 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 		}
 		//manage get_peers
 		if msgQ.QueryName == "find_peers" {
-			msgResponse, errQ := s.handlerDHT.ResponseGetPeers(msgQ, addr.String())
+			msgResponse, errQ := s.handlerDHT.ResponseGetPeers(&msgQ, addr.String())
 			//Pensar en hacer esta parte mas extensible
 			if errQ != nil {
 				log.Println("error: " + msgErr.ErrorKRPC())
@@ -96,7 +96,7 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 
 		//manage announce_peers
 		if msgQ.QueryName == "find_node" {
-			msgResponse, errQ := s.handlerDHT.ResponseAnnouncePeers(msgQ, addr.String())
+			msgResponse, errQ := s.handlerDHT.ResponseAnnouncePeers(&msgQ, addr.String())
 			//Pensar en hacer esta parte mas extensible
 			if errQ != nil {
 				log.Println("error: " + msgErr.ErrorKRPC())
@@ -117,7 +117,7 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 	//TODO:
 	// message correspond to a response
 	if err := bencode.Unmarshal(buf, msgR); err == nil {
-		go s.handlerDHT.getResponse(msgR, addr.String())
+		go s.handlerDHT.getResponse(&msgR, addr.String())
 		return
 	}
 	s.handlerDHT.checkAddrInRoutingTable(addr.String())

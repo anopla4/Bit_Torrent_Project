@@ -7,6 +7,7 @@ import (
 	"net"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackpal/bencode-go"
@@ -61,7 +62,7 @@ func newDHT(options *Options) *DHT {
 }
 
 func (dht *DHT) Ping(addr string) {
-	pingMsg, err := newQueryMessage("ping", map[string]interface{}{"id": string(dht.options.ID)})
+	pingMsg, err := newQueryMessage("ping", map[string]string{"id": string(dht.options.ID)})
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +101,7 @@ func (dht *DHT) GetPeers(infohash []byte) ([]string, bool) {
 
 // Store save info in dht storage
 func (dht *DHT) Store(infohash []byte, ip string, port string) error {
-	expTime := time.Now().Add(dht.options.ExpirationTime)
+	expTime := time.Now().Add(dht.options.ExpirationTime) //TODO: inverse proportionality assignation of expirationTime
 	repTime := time.Now().Add(dht.options.RepublishTime)
 	portI, _ := strconv.Atoi(port)
 	addr := net.UDPAddr{IP: net.ParseIP(ip), Port: portI}
@@ -128,14 +129,14 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 			q := &QueryMessage{}
 			if queryType == "find_node" {
 				var err krpcErroInt
-				q, err = newQueryMessage(queryType, map[string]interface{}{"id": string(n.ID), "target": id})
+				q, err = newQueryMessage(queryType, map[string]string{"id": string(n.ID), "target": id})
 				if err != nil {
 					return nil, nil, errors.New(err.ErrorKRPC())
 				}
 			} else {
 				if queryType == "get_peers" {
 					var err krpcErroInt
-					q, err = newQueryMessage(queryType, map[string]interface{}{"id": string(n.ID), "info_hash": id})
+					q, err = newQueryMessage(queryType, map[string]string{"id": string(n.ID), "info_hash": id})
 					if err != nil {
 						return nil, nil, errors.New(err.ErrorKRPC())
 					}
@@ -192,7 +193,7 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 			for _, result := range results {
 				switch queryType {
 				case "find_node":
-					nodesInfo := result.Response["nodes"].([]string)
+					nodesInfo := strings.Split(result.Response["nodes"], "//")
 					nodes := []*node{}
 					for _, nodeInfo := range nodesInfo {
 						nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
@@ -201,15 +202,14 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 
 				case "get_peers":
 					if values, ok := result.Response["values"]; ok {
-						return values.([]string), nil, nil
-					} else {
-						nodesInfo := result.Response["nodes"].([]string)
-						nodes := []*node{}
-						for _, nodeInfo := range nodesInfo {
-							nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
-						}
-						nl.AppendUnique(nodes)
+						return strings.Split(values, "//"), nil, nil
 					}
+					nodesInfo := strings.Split(result.Response["nodes"], "//")
+					nodes := []*node{}
+					for _, nodeInfo := range nodesInfo {
+						nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
+					}
+					nl.AppendUnique(nodes)
 
 				}
 			}
@@ -227,22 +227,21 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 				closest = append(closest, string(info))
 			}
 			return nil, closest, nil
-		} else {
-			closestNode = nl.Nodes[0]
 		}
+		closestNode = nl.Nodes[0]
+
 	}
-	// return nil, nil, nil
 }
 
 func (dht *DHT) PenalizeNode(node *NetworkNode) {
-	return
+
 }
 func (dht *DHT) AnnouncePeer(key string, port int) {
 	_, nodesToRequest, err := dht.LookUP(key, "find_node")
 	if err != nil {
 		panic(err)
 	}
-	args := map[string]interface{}{"id": string(dht.options.ID), "info_hash": key, "port": port}
+	args := map[string]string{"id": string(dht.options.ID), "info_hash": key, "port": strconv.Itoa(port)}
 	msg, errQ := newQueryMessage("announce_peer", args)
 	if err != nil {
 		panic(errQ)
@@ -250,7 +249,20 @@ func (dht *DHT) AnnouncePeer(key string, port int) {
 	for _, nodeInfo := range nodesToRequest {
 		n := newNodeFromCompactInfo([]byte(nodeInfo))
 		addr := net.UDPAddr{IP: n.IP, Port: n.port}
-		dht.SendMessage(msg, true, addr.String())
+		go func() {
+			expRes, err := dht.SendMessage(msg, true, addr.String())
+			if err != nil {
+				panic(err)
+			}
+			respChan := expRes.resChan
+			select {
+			case <-respChan:
+				return
+			case <-time.After(dht.options.TimeToDie):
+				dht.RemoveExpectedResponse([]byte(msg.TransactionID))
+				//buscar el nodo en la tabla de ruta y penalizarlo
+			}
+		}()
 	}
 }
 
