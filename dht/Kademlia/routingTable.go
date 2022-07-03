@@ -26,17 +26,16 @@ type routingTable struct {
 	//channel used to black routing table access
 	lock chan struct{}
 	//array with info of last time when a bucket was changed
-	lastChanged [B]time.Time
+	// lastChanged []time.Time
 }
 
 //create new instance of routingTable
 func newRoutingTable(options *Options) (*routingTable, error) {
 	rt := &routingTable{}
-
 	rt.Self = &NetworkNode{}
 	rt.lock = make(chan struct{})
-
-	if options.ID == nil {
+	go func() { rt.lock <- struct{}{} }()
+	if options.ID != nil {
 		rt.Self.ID = options.ID
 	} else {
 		id := make([]byte, 20)
@@ -46,12 +45,16 @@ func newRoutingTable(options *Options) (*routingTable, error) {
 		}
 		rt.Self.ID = id
 	}
-	for i := 0; i <= B; i++ {
-		rt.resetLastTimeChanged(i)
+	table := []*kbucket{}
+
+	for i := 0; i < B; i++ {
+		table = append(table, newKbucket())
 	}
-	for i := 0; i <= B; i++ {
-		rt.table = append(rt.table, newKbucket())
+	rt.table = table
+	for i := 0; i < B; i++ {
+		rt.resetLastTimeChanged(i, false)
 	}
+
 	if options.IP == "" || options.Port == 0 {
 		return nil, errors.New("Port and IP required")
 	}
@@ -71,21 +74,23 @@ func (rt *routingTable) setPort(port int) error {
 	rt.Self.port = port
 	return nil
 }
-func (rt *routingTable) resetLastTimeChanged(bucket int) {
-	<-rt.lock
+func (rt *routingTable) resetLastTimeChanged(bucket int, blocked bool) {
+	if !blocked {
+		<-rt.lock
+		go func() { go func() { rt.lock <- struct{}{} }() }()
+	}
 	rt.table[bucket].lastChanged = time.Now()
-	rt.lock <- struct{}{}
 }
 
 func (rt *routingTable) getLastTimeChanged(bucket int) time.Time {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 	return rt.table[bucket].lastChanged
 }
 
 func (rt *routingTable) getTotalKnownNodes() int {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	total := 0
 	for _, bucket := range rt.table {
@@ -101,7 +106,7 @@ func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
 		for j := 0; j < 8; j++ {
 			val := xor & (1 << (7 - j))
 			if val > 0 {
-				return B - 8*i + j - 1
+				return B - 8*i - j - 1
 			}
 		}
 	}
@@ -109,9 +114,11 @@ func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
 }
 
 //check if node with id nodeID
-func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int) int {
-	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int, blocked bool) int {
+	if !blocked {
+		<-rt.lock
+		defer func() { go func() { rt.lock <- struct{}{} }() }()
+	}
 	for index, n := range rt.table[bucket].bucket {
 		if bytes.Equal(n.ID, nodeID) {
 			return index
@@ -123,9 +130,8 @@ func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int) int {
 //return the num nearest nodes to a node with ID nodeID
 func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
 	nl := &nodeList{Comparator: nodeID}
-
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	index := rt.getFirstDifBitBucketIndex(nodeID)
 
@@ -140,12 +146,11 @@ func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
 			indexes = append(indexes, j)
 		}
 		i--
-		j--
+		j++
 	}
-
 	toAdd := num
 
-	for num > 0 && len(indexes) > 0 {
+	for num > 0 && len(indexes) > 0 && toAdd > 0 {
 		index, indexes = indexes[0], indexes[1:]
 		for _, v := range rt.table[index].bucket {
 			nl.AppendUnique([]*node{v})
@@ -162,7 +167,7 @@ func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
 //remove node with id nodeID from routing table
 func (rt *routingTable) RemoveNode(nodeID []byte) {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	index := rt.getFirstDifBitBucketIndex(nodeID)
 
@@ -176,7 +181,7 @@ func (rt *routingTable) RemoveNode(nodeID []byte) {
 //len of bucket i
 func (rt *routingTable) getTotalNodesInBucket(b int) int {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	return len(rt.table[b].bucket)
 }
@@ -188,27 +193,29 @@ func (rt *routingTable) getRandomIDFromBucket(b int) []byte {
 
 	id := rt.Self.ID
 
-	equalsBytes := b / 8
+	equalsBytes := (160 - b) / 8
 
 	newID := []byte{}
 	for i := 0; i < equalsBytes; i++ {
 		newID = append(newID, id[i])
 	}
 
-	firstDif := b % 8
-
-	var firstDifByte uint8
+	firstDif := (160-b)%8 - 1
+	var firstDifByte uint8 = 0
 
 	for i := 0; i < firstDif; i++ {
 		firstDifByte += uint8(id[equalsBytes] & (1 << (7 - i)))
 	}
 
-	for i := firstDif; i < 8; i++ {
+	if uint8(id[equalsBytes])&1<<(7-firstDif) == 0 {
+		firstDifByte += 1 << (7 - firstDif)
+	}
+	for i := firstDif + 1; i < 8; i++ {
 		aux, _ := rand.Int(rand.Reader, big.NewInt(2))
 		firstDifByte += uint8(int(aux.Int64()) << (7 - i))
 	}
-
-	for i := equalsBytes; i < 20; i++ {
+	newID = append(newID, firstDifByte)
+	for i := equalsBytes + 1; i < 20; i++ {
 		newByte, _ := rand.Int(rand.Reader, big.NewInt(256))
 		newID = append(newID, uint8(newByte.Int64()))
 	}
@@ -218,11 +225,11 @@ func (rt *routingTable) getRandomIDFromBucket(b int) []byte {
 //put node at the top(normally last seen node)
 func (rt *routingTable) updateBucketOfNode(node *node) {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	indexBucket := rt.getFirstDifBitBucketIndex(node.ID)
 
-	indexNode := rt.nodeInBucket(node.ID, indexBucket)
+	indexNode := rt.nodeInBucket(node.ID, indexBucket, true)
 
 	if indexNode == -1 {
 		rt.table[indexBucket].bucket = append(rt.table[indexBucket].bucket, node)
@@ -237,9 +244,10 @@ func (rt *routingTable) updateBucketOfNode(node *node) {
 	}
 }
 
+// return the nodes in bucket correspondent to id closest than routing table id
 func (rt *routingTable) getNodesInBucketClosestThanRT(id []byte) []*node {
 	<-rt.lock
-	defer func() { rt.lock <- struct{}{} }()
+	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
 	indexBucket := rt.getFirstDifBitBucketIndex(id)
 

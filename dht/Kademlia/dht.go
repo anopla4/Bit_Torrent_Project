@@ -368,7 +368,7 @@ func (dht *DHT) RefreshBucket(bucket int) {
 	ticker := time.NewTicker(dht.options.TimeToRefreshBuckets)
 	for {
 		<-ticker.C
-		if dht.routingTable.lastChanged[bucket].Add(dht.options.TimeToRefreshBuckets).Before(time.Now()) {
+		if dht.routingTable.table[bucket].lastChanged.Add(dht.options.TimeToRefreshBuckets).Before(time.Now()) {
 			id := dht.routingTable.getRandomIDFromBucket(bucket)
 			go dht.LookUP(string(id), "find_node")
 		}
