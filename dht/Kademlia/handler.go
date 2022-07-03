@@ -176,30 +176,30 @@ func (hd *handlerDHT) getResponse(msg *ResponseMessage, addr string) {
 		if addr != expResponse.recieverADDR {
 			hd.dht.RemoveExpectedResponse(expResponse.idQuery)
 			resChan := expResponse.resChan
-			resChan <- nil
+			go func() { resChan <- nil }()
 			goto UPD
 		}
-		if expResponse.mess.TypeOfMessage == "find_node" {
+		if expResponse.mess.QueryName == "find_node" {
 			if _, in := msg.Response["id"]; !in {
 				hd.dht.RemoveExpectedResponse([]byte(msg.TransactionID))
 				resChan := expResponse.resChan
-				resChan <- nil
+				go func() { resChan <- nil }()
 				goto UPD
 			}
 			if _, in := msg.Response["nodes"]; !in {
 				hd.dht.RemoveExpectedResponse([]byte(msg.TransactionID))
 				resChan := expResponse.resChan
-				resChan <- nil
+				go func() { resChan <- nil }()
 				goto UPD
 			}
 			resChan := expResponse.resChan
-			resChan <- msg
+			go func() { resChan <- msg }()
 		} else {
-			if expResponse.mess.TypeOfMessage == "get_peers" {
+			if expResponse.mess.QueryName == "get_peers" {
 				if _, in := msg.Response["id"]; !in {
 					hd.dht.RemoveExpectedResponse([]byte(msg.TransactionID))
 					resChan := expResponse.resChan
-					resChan <- nil
+					go func() { resChan <- nil }()
 					goto UPD
 				}
 				_, in := msg.Response["nodes"]
@@ -207,21 +207,22 @@ func (hd *handlerDHT) getResponse(msg *ResponseMessage, addr string) {
 				if !in && !inn {
 					hd.dht.RemoveExpectedResponse([]byte(msg.TransactionID))
 					resChan := expResponse.resChan
-					resChan <- nil
+					go func() { resChan <- nil }()
 					goto UPD
 				}
 				resChan := expResponse.resChan
-				resChan <- msg
+				go func() { resChan <- msg }()
+				//ver bien donde elimino las expResp si son correctas
 			} else {
-				if expResponse.mess.TypeOfMessage == "ping" {
+				if expResponse.mess.QueryName == "ping" {
 					if _, in := msg.Response["id"]; !in {
 						hd.dht.RemoveExpectedResponse([]byte(msg.TransactionID))
 						resChan := expResponse.resChan
-						resChan <- nil
+						go func() { resChan <- nil }()
 						goto UPD
 					}
 					resChan := expResponse.resChan
-					resChan <- msg
+					go func() { resChan <- msg }()
 				}
 				// else {
 				// 	if expResponse.mess.TypeOfMessage == "announce_peer" {

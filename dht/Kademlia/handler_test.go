@@ -286,5 +286,47 @@ func TestResponseAnnouncePeers(t *testing.T) {
 	assert.Equal(t, 1, len(valuesR1))
 	_, ok := msgR4.Response["nodes"]
 	assert.False(t, ok)
+}
 
+func TestGetResponse(t *testing.T) {
+	id := getIDWithB(uint8(5))
+	options := &Options{
+		ID:             id,
+		IP:             "10.6.100.75",
+		Port:           3128,
+		ExpirationTime: time.Second * 2,
+		RepublishTime:  time.Minute,
+		TimeToDie:      time.Second,
+	}
+	dht := newDHT(options)
+	hd := &handlerDHT{dht: dht}
+	args := map[string]string{"id": string(getIDWithB(uint8(6))), "info_hash": string(getIDWithB(uint8(3)))}
+	msg, err := newQueryMessage("get_peers", args)
+	if err != nil {
+		fmt.Println(err.ErrorKRPC())
+		panic(err)
+	}
+	addr := "10.6.100.56:3333"
+
+	expR := &ExpectedResponse{
+		idQuery:      getIDWithB(3),
+		mess:         msg,
+		recieverADDR: addr,
+		resChan:      make(chan *ResponseMessage),
+		timeToDie:    time.Now().Add(time.Hour),
+	}
+	dht.expectedResponses[msg.TransactionID] = expR
+
+	args1 := map[string]string{"id": string(getIDWithB(uint8(7))), "values": "10.6.100.71:3332//10.6.7.8:3131"}
+	msgR, err := newResponseMessage("get_peers", msg.TransactionID, args1)
+	if err != nil {
+		fmt.Println(err.ErrorKRPC())
+		panic(err)
+	}
+	addr1 := "10.6.100.56:3333"
+	assert.Equal(t, 1, len(dht.expectedResponses))
+	hd.getResponse(msgR, addr1)
+	respChan := expR.resChan
+	resp := <-respChan
+	assert.Equal(t, msgR, resp)
 }

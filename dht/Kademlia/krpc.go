@@ -128,7 +128,7 @@ func (s *Server) HandleMessage(l net.PacketConn, addr net.Addr, bufM []byte, nBy
 func (s *Server) RunServer(exit chan string, conn chan *net.PacketConn) {
 	l, err := net.ListenPacket("udp", s.ip.String()+":"+strconv.Itoa(s.port))
 	if err != nil {
-		exit <- err.Error()
+		go func() { exit <- err.Error() }()
 	}
 	defer func() {
 		err := l.Close()
@@ -137,14 +137,14 @@ func (s *Server) RunServer(exit chan string, conn chan *net.PacketConn) {
 			panic(err)
 		}
 	}()
-	conn <- &l
+	go func() { conn <- &l }()
 	for {
 		buf := make([]byte, 1024)
 		bytesRead, addr, err := l.ReadFrom(buf)
 
 		if err != nil {
 			s.Error = err
-			exit <- err.Error()
+			go func() { exit <- err.Error() }()
 			break
 		}
 		go s.HandleMessage(l, addr, buf, bytesRead)

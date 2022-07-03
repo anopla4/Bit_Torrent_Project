@@ -160,7 +160,7 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 						dht.RemoveExpectedResponse(r.idQuery)
 						return
 					}
-					respChan <- response
+					go func() { respChan <- response }()
 				case <-time.After(dht.options.TimeToDie):
 					dht.PenalizeNode(nl.Nodes[index])
 					dht.RemoveExpectedResponse(r.idQuery)
