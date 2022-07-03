@@ -14,43 +14,43 @@ type handlerDHT struct {
 // }
 
 func (hd *handlerDHT) updateNodeOfMessage(msg *QueryMessage, addr string) krpcErroInt {
-	nodeQuerying := &node{}
+	// nodeQuerying := &node{}
 
 	if _, in := msg.Arguments["id"]; !in {
 		return newProtocolError("id key is required for ping request")
 	}
+
 	value := msg.Arguments["id"]
-	nodeQuerying.ID = []byte(value)
+	id := []byte(value)
 	addrUDP, errADDR := net.ResolveUDPAddr("udp", addr)
+
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
 	}
-	nodeQuerying.IP = addrUDP.IP
-	nodeQuerying.port = addrUDP.Port
+	nodeQuerying := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, port: addrUDP.Port})
 
 	hd.dht.Update(nodeQuerying)
 	return nil
 }
 
 func (hd *handlerDHT) updateNodeOfResponse(msg *ResponseMessage, addr string) krpcErroInt {
-	nodeR := &node{}
-
+	// nodeR := &node{}
 	if _, in := msg.Response["id"]; !in {
 		hd.checkAddrInRoutingTable(addr)
 		return newProtocolError("id key is required")
 	}
+
 	value := msg.Response["id"]
-	nodeR.ID = []byte(value)
+	id := []byte(value)
 	addrUDP, errADDR := net.ResolveUDPAddr("udp", addr)
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
 	}
-	nodeR.IP = addrUDP.IP
-	nodeR.port = addrUDP.Port
+	nodeResponding := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, port: addrUDP.Port})
 
 	//TODO:
 	//actualizar en 0 la cantidad de respuestas
-	hd.dht.Update(nodeR)
+	hd.dht.Update(nodeResponding)
 	return nil
 }
 
@@ -120,7 +120,9 @@ func (hd *handlerDHT) ResponseGetPeers(msg *QueryMessage, addr string) (*Respons
 	infohash := []byte(msg.Arguments["info_hash"])
 	peers, ok := hd.dht.GetPeers(infohash)
 	if ok {
+		print(peers)
 		args["values"] = strings.Join(peers, "//")
+		print(args["values"])
 	} else {
 		args["nodes"] = strings.Join(peers, "//")
 	}
@@ -143,10 +145,11 @@ func (hd *handlerDHT) ResponseAnnouncePeers(msg *QueryMessage, addr string) (*Re
 
 	infohash := msg.Arguments["info_hash"]
 	port := msg.Arguments["port"]
-	ip, err := net.ResolveIPAddr("udp", addr)
+	UDPAddr, err := net.ResolveUDPAddr("udp", addr)
 	if err != nil {
 		return nil, newGenericError(err.Error())
 	}
+	ip := UDPAddr.IP
 	err = hd.dht.Store([]byte(infohash), ip.String(), port)
 	if err != nil {
 		return nil, newGenericError(err.Error())
