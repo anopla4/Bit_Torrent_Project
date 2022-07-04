@@ -27,7 +27,7 @@ func (hd *handlerDHT) updateNodeOfMessage(msg *QueryMessage, addr string) krpcEr
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
 	}
-	nodeQuerying := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, port: addrUDP.Port})
+	nodeQuerying := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, Port: addrUDP.Port})
 
 	hd.dht.Update(nodeQuerying)
 	return nil
@@ -46,7 +46,7 @@ func (hd *handlerDHT) updateNodeOfResponse(msg *ResponseMessage, addr string) kr
 	if errADDR != nil {
 		return newGenericError("error resolving udp addr: " + errADDR.Error())
 	}
-	nodeResponding := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, port: addrUDP.Port})
+	nodeResponding := newNode(&NetworkNode{ID: id, IP: addrUDP.IP, Port: addrUDP.Port})
 
 	//TODO:
 	//actualizar en 0 la cantidad de respuestas

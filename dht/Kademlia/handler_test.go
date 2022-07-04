@@ -19,7 +19,7 @@ func TestNewHandler(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	assert.IsType(t, &handlerDHT{}, hd)
 }
@@ -34,14 +34,14 @@ func TestUpdateNodeOfQueryMessage(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args1 := map[string]string{"id": string(getIDWithB(uint8(3))), "info_hash": "node1//node2", "port": "3128"}
 	msg1, _ := newQueryMessage("announce_peer", args1)
 	addr := "10.6.100.56:3333"
 	err := hd.updateNodeOfMessage(msg1, addr)
 	assert.Nil(t, err)
-	assert.Equal(t, 1, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 1, dht.RoutingTable.GetTotalKnownNodes())
 }
 
 func TestUpdateNodeOfResponseMessage(t *testing.T) {
@@ -54,7 +54,7 @@ func TestUpdateNodeOfResponseMessage(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args1 := map[string]string{"id": string(getIDWithB(uint8(3))), "nodes": "node1//node2"}
 	msg1, err := newResponseMessage("find_node", "12223", args1)
@@ -65,7 +65,7 @@ func TestUpdateNodeOfResponseMessage(t *testing.T) {
 	addr := "10.6.100.56:3333"
 	err = hd.updateNodeOfResponse(msg1, addr)
 	assert.Nil(t, err)
-	assert.Equal(t, 1, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 1, dht.RoutingTable.GetTotalKnownNodes())
 }
 
 func TestResponsePing(t *testing.T) {
@@ -78,7 +78,7 @@ func TestResponsePing(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args1 := map[string]string{"id": string(getIDWithB(uint8(3)))}
 	msg1, err := newQueryMessage("ping", args1)
@@ -94,7 +94,7 @@ func TestResponsePing(t *testing.T) {
 	assert.IsType(t, &ResponseMessage{}, msgR)
 	assert.Equal(t, msg1.TransactionID, msgR.TransactionID)
 	assert.Equal(t, string(id), msgR.Response["id"])
-	assert.Equal(t, 1, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 1, dht.RoutingTable.GetTotalKnownNodes())
 }
 
 func TestResponseFindNode(t *testing.T) {
@@ -107,7 +107,7 @@ func TestResponseFindNode(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args0 := map[string]string{"id": string(getIDWithB(uint8(3)))}
 	msg0, err0 := newQueryMessage("ping", args0)
@@ -145,7 +145,7 @@ func TestResponseFindNode(t *testing.T) {
 	assert.IsType(t, &ResponseMessage{}, msgR)
 	assert.Equal(t, msg1.TransactionID, msgR.TransactionID)
 	assert.Equal(t, string(id), msgR.Response["id"])
-	assert.Equal(t, 2, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 2, dht.RoutingTable.GetTotalKnownNodes())
 	values, ok := msgR.Response["nodes"]
 	valuesR := strings.Split(values, "//")
 	assert.True(t, ok)
@@ -162,7 +162,7 @@ func TestResponseGetPeers(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args0 := map[string]string{"id": string(getIDWithB(uint8(3)))}
 	msg0, err0 := newQueryMessage("ping", args0)
@@ -200,7 +200,7 @@ func TestResponseGetPeers(t *testing.T) {
 	assert.IsType(t, &ResponseMessage{}, msgR)
 	assert.Equal(t, msg1.TransactionID, msgR.TransactionID)
 	assert.Equal(t, string(id), msgR.Response["id"])
-	assert.Equal(t, 2, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 2, dht.RoutingTable.GetTotalKnownNodes())
 	values, ok := msgR.Response["nodes"]
 	assert.True(t, ok)
 	valuesR := strings.Split(values, "//")
@@ -227,7 +227,7 @@ func TestResponseGetPeers(t *testing.T) {
 	assert.IsType(t, &ResponseMessage{}, msgR4)
 	assert.Equal(t, msg4.TransactionID, msgR4.TransactionID)
 	assert.Equal(t, string(id), msgR4.Response["id"])
-	assert.Equal(t, 2, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 2, dht.RoutingTable.GetTotalKnownNodes())
 	values1, ok1 := msgR4.Response["values"]
 	assert.True(t, ok1)
 	valuesR1 := strings.Split(values1, "//")
@@ -246,7 +246,7 @@ func TestResponseAnnouncePeers(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args0 := map[string]string{"id": string(getIDWithB(uint8(3))), "info_hash": string(getIDWithB(uint8(3))), "port": "3332"}
 	msg0, err0 := newQueryMessage("announce_peer", args0)
@@ -263,7 +263,7 @@ func TestResponseAnnouncePeers(t *testing.T) {
 
 	assert.IsType(t, &ResponseMessage{}, msgR)
 	assert.Equal(t, msg0.TransactionID, msgR.TransactionID)
-	assert.Equal(t, 1, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 1, dht.RoutingTable.GetTotalKnownNodes())
 	args4 := map[string]string{"id": string(getIDWithB(uint8(6))), "info_hash": string(getIDWithB(uint8(3)))}
 	msg4, err4 := newQueryMessage("get_peers", args4)
 	if err4 != nil {
@@ -279,7 +279,7 @@ func TestResponseAnnouncePeers(t *testing.T) {
 	assert.IsType(t, &ResponseMessage{}, msgR4)
 	assert.Equal(t, msg4.TransactionID, msgR4.TransactionID)
 	assert.Equal(t, string(id), msgR4.Response["id"])
-	assert.Equal(t, 2, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 2, dht.RoutingTable.GetTotalKnownNodes())
 	values1, ok1 := msgR4.Response["values"]
 	assert.True(t, ok1)
 	valuesR1 := strings.Split(values1, "//")
@@ -298,7 +298,7 @@ func TestGetResponse(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	hd := &handlerDHT{dht: dht}
 	args := map[string]string{"id": string(getIDWithB(uint8(6))), "info_hash": string(getIDWithB(uint8(3)))}
 	msg, err := newQueryMessage("get_peers", args)

@@ -19,7 +19,7 @@ const (
 	B = 160
 )
 
-type routingTable struct {
+type RoutingTable struct {
 	Self *NetworkNode
 	//routing table of nodes(160*k)
 	table []*kbucket
@@ -29,9 +29,9 @@ type routingTable struct {
 	// lastChanged []time.Time
 }
 
-//create new instance of routingTable
-func newRoutingTable(options *Options) (*routingTable, error) {
-	rt := &routingTable{}
+//create new instance of RoutingTable
+func newRoutingTable(options *Options) (*RoutingTable, error) {
+	rt := &RoutingTable{}
 	rt.Self = &NetworkNode{}
 	rt.lock = make(chan struct{})
 	go func() { rt.lock <- struct{}{} }()
@@ -66,15 +66,15 @@ func newRoutingTable(options *Options) (*routingTable, error) {
 	return rt, nil
 }
 
-func (rt *routingTable) setIP(ip string) {
+func (rt *RoutingTable) setIP(ip string) {
 	rt.Self.IP = net.ParseIP(ip)
 }
 
-func (rt *routingTable) setPort(port int) error {
-	rt.Self.port = port
+func (rt *RoutingTable) setPort(port int) error {
+	rt.Self.Port = port
 	return nil
 }
-func (rt *routingTable) resetLastTimeChanged(bucket int, blocked bool) {
+func (rt *RoutingTable) resetLastTimeChanged(bucket int, blocked bool) {
 	if !blocked {
 		<-rt.lock
 		go func() { go func() { rt.lock <- struct{}{} }() }()
@@ -82,13 +82,13 @@ func (rt *routingTable) resetLastTimeChanged(bucket int, blocked bool) {
 	rt.table[bucket].lastChanged = time.Now()
 }
 
-func (rt *routingTable) getLastTimeChanged(bucket int) time.Time {
+func (rt *RoutingTable) getLastTimeChanged(bucket int) time.Time {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 	return rt.table[bucket].lastChanged
 }
 
-func (rt *routingTable) getTotalKnownNodes() int {
+func (rt *RoutingTable) GetTotalKnownNodes() int {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
@@ -100,7 +100,7 @@ func (rt *routingTable) getTotalKnownNodes() int {
 }
 
 //index of correspondent bucket for node(first bite different)
-func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
+func (rt *RoutingTable) getFirstDifBitBucketIndex(node []byte) int {
 	for i := 0; i < len(node); i++ {
 		xor := node[i] ^ rt.Self.ID[i]
 		for j := 0; j < 8; j++ {
@@ -114,7 +114,7 @@ func (rt *routingTable) getFirstDifBitBucketIndex(node []byte) int {
 }
 
 //check if node with id nodeID
-func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int, blocked bool) int {
+func (rt *RoutingTable) nodeInBucket(nodeID []byte, bucket int, blocked bool) int {
 	if !blocked {
 		<-rt.lock
 		defer func() { go func() { rt.lock <- struct{}{} }() }()
@@ -128,7 +128,7 @@ func (rt *routingTable) nodeInBucket(nodeID []byte, bucket int, blocked bool) in
 }
 
 //return the num nearest nodes to a node with ID nodeID
-func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
+func (rt *RoutingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
 	nl := &nodeList{Comparator: nodeID}
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
@@ -165,7 +165,7 @@ func (rt *routingTable) getNearestNodes(num int, nodeID []byte) *nodeList {
 }
 
 //remove node with id nodeID from routing table
-func (rt *routingTable) RemoveNode(nodeID []byte) {
+func (rt *RoutingTable) RemoveNode(nodeID []byte) {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
@@ -179,7 +179,7 @@ func (rt *routingTable) RemoveNode(nodeID []byte) {
 }
 
 //len of bucket i
-func (rt *routingTable) getTotalNodesInBucket(b int) int {
+func (rt *RoutingTable) getTotalNodesInBucket(b int) int {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
@@ -187,7 +187,7 @@ func (rt *routingTable) getTotalNodesInBucket(b int) int {
 }
 
 //get random id from bucket b space
-func (rt *routingTable) getRandomIDFromBucket(b int) []byte {
+func (rt *RoutingTable) getRandomIDFromBucket(b int) []byte {
 	// <-rt.lock
 	// defer func() { rt.lock <- struct{}{} }()
 
@@ -223,7 +223,7 @@ func (rt *routingTable) getRandomIDFromBucket(b int) []byte {
 }
 
 //put node at the top(normally last seen node)
-func (rt *routingTable) updateBucketOfNode(node *node) {
+func (rt *RoutingTable) updateBucketOfNode(node *node) {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 
@@ -245,7 +245,7 @@ func (rt *routingTable) updateBucketOfNode(node *node) {
 }
 
 // return the nodes in bucket correspondent to id closest than routing table id
-func (rt *routingTable) getNodesInBucketClosestThanRT(id []byte) []*node {
+func (rt *RoutingTable) getNodesInBucketClosestThanRT(id []byte) []*node {
 	<-rt.lock
 	defer func() { go func() { rt.lock <- struct{}{} }() }()
 

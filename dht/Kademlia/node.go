@@ -14,7 +14,7 @@ type NetworkNode struct {
 	//IP direction of the node
 	IP net.IP
 	//port number
-	port int
+	Port int
 }
 
 //most general representation of the dht Node(it would include other metadatas like las_seen_time)
@@ -26,7 +26,7 @@ type node struct {
 func NewNetworkNode(ip string, port string) *NetworkNode {
 	p, _ := strconv.Atoi(port)
 	return &NetworkNode{
-		port: p,
+		Port: p,
 		IP:   net.ParseIP(ip),
 	}
 }
@@ -35,13 +35,13 @@ func (n *node) CompactInfo() []byte {
 	info := make([]byte, len(n.ID))
 	copy(info, n.ID)
 	info = append(info, n.IP...)
-	var h, l uint8 = uint8(n.port >> 8), uint8(n.port & 0xff)
+	var h, l uint8 = uint8(n.Port >> 8), uint8(n.Port & 0xff)
 	portB := []byte{h, l}
 	info = append(info, portB...)
 	return info
 }
 
-func newNodeFromCompactInfo(info []byte) *node {
+func NewNodeFromCompactInfo(info []byte) *node {
 	id := make([]byte, 20)
 	copy(id, info[:20])
 	ipB := make([]byte, 16)
@@ -51,7 +51,7 @@ func newNodeFromCompactInfo(info []byte) *node {
 	copy(portB, info[36:])
 	port := uint16(portB[0])<<8 + uint16(portB[1])
 
-	return newNode(&NetworkNode{ID: id, port: int(port), IP: ip})
+	return newNode(&NetworkNode{ID: id, Port: int(port), IP: ip})
 }
 
 // NewNode constructor of node
@@ -74,7 +74,7 @@ func equalsNodes(n1 *NetworkNode, n2 *NetworkNode, letIDNil bool) bool {
 			return false
 		}
 	}
-	if n1.port != n2.port {
+	if n1.Port != n2.Port {
 		return false
 	}
 	if !n1.IP.Equal(n2.IP) {

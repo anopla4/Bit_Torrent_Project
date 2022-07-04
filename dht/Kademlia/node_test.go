@@ -16,7 +16,7 @@ func TestNewNetworkNode(t *testing.T) {
 	ipTest := net.IP{}
 	assert.IsType(t, ipTest, node.IP, "node.ip is not net.IP type")
 	assert.Equal(t, "10.6.100.25", node.IP.String(), "node ip is not the same passed as argument")
-	assert.Equal(t, 3128, node.port, "node.port is not the same passed as argument")
+	assert.Equal(t, 3128, node.Port, "node.port is not the same passed as argument")
 }
 
 func TestNewNode(t *testing.T) {
@@ -29,7 +29,7 @@ func TestNewNode(t *testing.T) {
 	node := newNode(ntNode)
 	assert.Equal(t, ntNode.ID, node.ID, "incorrect id")
 	assert.Equal(t, ntNode.IP.String(), ntNode.IP.String(), "incorrect ip addres")
-	assert.Equal(t, ntNode.port, ntNode.port, "incorrect port")
+	assert.Equal(t, ntNode.Port, ntNode.Port, "incorrect port")
 }
 
 func TestCompactIN(t *testing.T) {
@@ -40,13 +40,13 @@ func TestCompactIN(t *testing.T) {
 		t.Fatal(err)
 	}
 	node := newNode(ntNode)
-	assert.Equal(t, node.port, ntNode.port)
+	assert.Equal(t, node.Port, ntNode.Port)
 	compactInfo := node.CompactInfo()
 	assert.IsType(t, []byte{}, compactInfo, "contact info type has to be []byte")
-	newnode := newNodeFromCompactInfo(compactInfo)
+	newnode := NewNodeFromCompactInfo(compactInfo)
 	assert.Equal(t, ntNode.ID, newnode.ID, "incorrect id from compact info")
 	assert.Equal(t, ntNode.IP.String(), newnode.IP.String(), "incorrect ip addres from compact info")
-	assert.Equal(t, ntNode.port, newnode.port, "incorrect port from compact info")
+	assert.Equal(t, ntNode.Port, newnode.Port, "incorrect port from compact info")
 }
 
 func TestEqualsNodes(t *testing.T) {
@@ -58,7 +58,7 @@ func TestEqualsNodes(t *testing.T) {
 	}
 	node := newNode(ntNode)
 	compactInfo := node.CompactInfo()
-	newnode := newNodeFromCompactInfo(compactInfo)
+	newnode := NewNodeFromCompactInfo(compactInfo)
 	equals := equalsNodes(ntNode, newnode.NetworkNode, false)
 	assert.Equal(t, true, equals, "problem with equalsNodes method")
 }

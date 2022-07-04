@@ -316,6 +316,7 @@ func TestBencodeResponseMessages(t *testing.T) {
 func TestBencodeQueryMessages(t *testing.T) {
 	args := map[string]string{"id": "kkkk"}
 	msg, _ := newQueryMessage("ping", args)
+
 	bufer := &bytes.Buffer{}
 	err := bencode.Marshal(bufer, *msg)
 	assert.Nil(t, err)

@@ -19,9 +19,9 @@ func TestNewDHT(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	assert.IsType(t, &DHT{}, dht)
-	assert.IsType(t, &routingTable{}, dht.routingTable)
+	assert.IsType(t, &RoutingTable{}, dht.RoutingTable)
 	assert.Equal(t, options, dht.options)
 	assert.IsType(t, &KStore{}, dht.store)
 	assert.IsType(t, map[string]*ExpectedResponse{}, dht.expectedResponses)
@@ -37,7 +37,7 @@ func TestStoreLocal(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	id1 := getIDWithB(uint8(3))
 	ip := "10.6.100.21"
 	port := "3128"
@@ -60,7 +60,7 @@ func TestGetPeerWhenInfohashLocal(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	id1 := getIDWithB(uint8(3))
 	ip := "10.6.100.21"
 	port := "3128"
@@ -87,7 +87,7 @@ func TestCheckExpirationTime(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 	id1 := getIDWithB(uint8(3))
 	ip := "10.6.100.21"
 	port := "3128"
@@ -119,14 +119,14 @@ func TestUpdateNode(t *testing.T) {
 		RepublishTime:  time.Minute,
 		TimeToDie:      time.Second,
 	}
-	dht := newDHT(options)
+	dht := NewDHT(options)
 
 	id2 := make([]byte, 20)
 	copy(id2[:5], id[:5])
 	id2 = append(id2[:5], getIDWithB(uint8(3))[:15]...)
-	n := newNode(&NetworkNode{ID: id2, IP: net.ParseIP("10.6.100.76"), port: 3128})
+	n := newNode(&NetworkNode{ID: id2, IP: net.ParseIP("10.6.100.76"), Port: 3128})
 	dht.Update(n)
-	assert.Equal(t, 1, dht.routingTable.getTotalKnownNodes())
+	assert.Equal(t, 1, dht.RoutingTable.GetTotalKnownNodes())
 	infos := dht.FindNode(id2)
 
 	assert.Equal(t, 1, len(infos))

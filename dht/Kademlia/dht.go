@@ -3,7 +3,7 @@ package dht
 import (
 	"bytes"
 	"errors"
-	"math"
+	"log"
 	"net"
 	"sort"
 	"strconv"
@@ -14,10 +14,10 @@ import (
 )
 
 type DHT struct {
-	routingTable      *routingTable
+	RoutingTable      *RoutingTable
 	store             *KStore
 	options           *Options
-	conn              *net.PacketConn
+	conn              *net.UDPConn
 	expectedResponses map[string]*ExpectedResponse
 	// sendedToken  map[string]string
 }
@@ -40,19 +40,19 @@ type ExpectedResponse struct {
 }
 
 func (dht *DHT) Update(node *node) {
-	dht.routingTable.updateBucketOfNode(node)
+	dht.RoutingTable.updateBucketOfNode(node)
 }
 
 func (dht *DHT) GetID() []byte {
 	return dht.options.ID
 }
 
-func newDHT(options *Options) *DHT {
+func NewDHT(options *Options) *DHT {
 	dht := &DHT{}
 	dht.options = options
 
 	rt, _ := newRoutingTable(options)
-	dht.routingTable = rt
+	dht.RoutingTable = rt
 
 	st := NewKStore()
 	dht.store = st
@@ -62,10 +62,15 @@ func newDHT(options *Options) *DHT {
 }
 
 func (dht *DHT) Ping(addr string) {
-	pingMsg, err := newQueryMessage("ping", map[string]string{"id": string(dht.options.ID)})
+	log.Println("sending ping message to " + addr)
+	args := map[string]string{"id": string(dht.options.ID)}
+	pingMsg, err := newQueryMessage("ping", args)
 	if err != nil {
 		panic(err)
 	}
+
+	// fmt.Println(msgD.QueryName)
+	log.Println(pingMsg.Arguments["id"] == string(dht.options.ID))
 	expResponse, errQ := dht.SendMessage(pingMsg, true, addr)
 	if errQ != nil {
 		panic(errQ)
@@ -73,8 +78,10 @@ func (dht *DHT) Ping(addr string) {
 	respChan := expResponse.resChan
 	select {
 	case <-respChan:
+		log.Println("receiving ping response from " + addr)
 		return
 	case <-time.After(dht.options.TimeToDie):
+		log.Println("failed receiving ping response")
 		dht.RemoveExpectedResponse([]byte(pingMsg.TransactionID))
 		//do something with penalize
 	}
@@ -82,7 +89,7 @@ func (dht *DHT) Ping(addr string) {
 
 // FindNode return a list with compactInfo of k nearest node to target
 func (dht *DHT) FindNode(target []byte) []string {
-	nl := dht.routingTable.getNearestNodes(K, target)
+	nl := dht.RoutingTable.getNearestNodes(K, target)
 	nodesInfo := []string{}
 	for _, n := range nl.Nodes {
 		nodesInfo = append(nodesInfo, string(newNode(n).CompactInfo()))
@@ -117,15 +124,15 @@ func (dht *DHT) GetExpextedResponse(transactionID []byte) (*ExpectedResponse, bo
 }
 
 func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []string, err error) {
-	nl := dht.routingTable.getNearestNodes(ALPHA, []byte(id))
+	nl := dht.RoutingTable.getNearestNodes(ALPHA, []byte(id))
 
 	closestNode := nl.Nodes[0]
 
 	for {
-		expectedResponsesLU := make([]*ExpectedResponse, ALPHA)
-		for i := 0; i < int(math.Min(ALPHA, float64(nl.Len()))); i++ {
+		expectedResponsesLU := []*ExpectedResponse{}
+		for i := 0; i < ALPHA && i < nl.Len(); i++ {
 			n := nl.Nodes[i]
-			addr := net.UDPAddr{IP: n.IP, Port: n.port}
+			addr := net.UDPAddr{IP: n.IP, Port: n.Port}
 			q := &QueryMessage{}
 			if queryType == "find_node" {
 				var err krpcErroInt
@@ -148,7 +155,7 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 			if err != nil {
 				return nil, nil, err
 			}
-			expectedResponsesLU[i] = er
+			expectedResponsesLU = append(expectedResponsesLU, er)
 		}
 		respChan := make(chan *ResponseMessage)
 		for i := 0; i < len(expectedResponsesLU); i++ {
@@ -194,9 +201,14 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 				switch queryType {
 				case "find_node":
 					nodesInfo := strings.Split(result.Response["nodes"], "//")
+
 					nodes := []*node{}
 					for _, nodeInfo := range nodesInfo {
-						nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
+						newN := NewNodeFromCompactInfo([]byte(nodeInfo))
+						// if bytes.Equal(newN.ID, dht.options.ID) {
+						// 	continue
+						// }
+						nodes = append(nodes, newN)
 					}
 					nl.AppendUnique(nodes)
 
@@ -207,7 +219,7 @@ func (dht *DHT) LookUP(id string, queryType string) (values []string, closest []
 					nodesInfo := strings.Split(result.Response["nodes"], "//")
 					nodes := []*node{}
 					for _, nodeInfo := range nodesInfo {
-						nodes = append(nodes, newNodeFromCompactInfo([]byte(nodeInfo)))
+						nodes = append(nodes, NewNodeFromCompactInfo([]byte(nodeInfo)))
 					}
 					nl.AppendUnique(nodes)
 
@@ -238,17 +250,20 @@ func (dht *DHT) PenalizeNode(node *NetworkNode) {
 }
 func (dht *DHT) AnnouncePeer(key string, port int) {
 	_, nodesToRequest, err := dht.LookUP(key, "find_node")
+
 	if err != nil {
 		panic(err)
 	}
 	args := map[string]string{"id": string(dht.options.ID), "info_hash": key, "port": strconv.Itoa(port)}
 	msg, errQ := newQueryMessage("announce_peer", args)
+
 	if err != nil {
 		panic(errQ)
 	}
 	for _, nodeInfo := range nodesToRequest {
-		n := newNodeFromCompactInfo([]byte(nodeInfo))
-		addr := net.UDPAddr{IP: n.IP, Port: n.port}
+		n := NewNodeFromCompactInfo([]byte(nodeInfo))
+
+		addr := net.UDPAddr{IP: n.IP, Port: n.Port}
 		go func() {
 			expRes, err := dht.SendMessage(msg, true, addr.String())
 			if err != nil {
@@ -274,17 +289,19 @@ func (dht *DHT) RunServer(exit chan string) {
 	hd := handlerDHT{
 		dht: dht,
 	}
-
 	server := newServer(dht.options.IP, dht.options.Port, hd)
-	conn := make(chan *net.PacketConn)
+	conn := make(chan *net.UDPConn)
 	go server.RunServer(exit, conn)
 	dht.conn = <-conn
+	// go dht.RefreshBuckets()
+	// go dht.checkForExpirationTime()
+	// go dht.CheckExpectedResponses()
 }
 
 // SendMessage send a query message to an addres throug dht.conn
 func (dht *DHT) SendMessage(query *QueryMessage, expectingResponse bool, addr string) (*ExpectedResponse, error) {
-	buffer := bytes.NewBuffer(make([]byte, 1024))
-	err := bencode.Marshal(buffer, query)
+	buffer := &bytes.Buffer{}
+	err := bencode.Marshal(buffer, *query)
 	if err != nil {
 		return nil, err
 	}
@@ -294,6 +311,7 @@ func (dht *DHT) SendMessage(query *QueryMessage, expectingResponse bool, addr st
 		return nil, err
 	}
 	_, err = conn.WriteTo(buffer.Bytes(), addrN)
+
 	if err != nil {
 		return nil, err
 	}
@@ -359,15 +377,9 @@ func (dht *DHT) GetPeersToDownload(infohash []byte) ([]string, error) {
 		return nil, err
 	}
 	if values == nil {
-		return nil, errors.New("not peers fuond for infohash")
+		return []string{}, nil
 	}
-	nodes := []string{}
-	for _, info := range values {
-		n := newNodeFromCompactInfo([]byte(info))
-		addr := net.TCPAddr{IP: n.IP, Port: n.port}
-		nodes = append(nodes, addr.String())
-	}
-	return nodes, nil
+	return values, nil
 }
 
 func (dht *DHT) RefreshBuckets() {
@@ -380,8 +392,8 @@ func (dht *DHT) RefreshBucket(bucket int) {
 	ticker := time.NewTicker(dht.options.TimeToRefreshBuckets)
 	for {
 		<-ticker.C
-		if dht.routingTable.table[bucket].lastChanged.Add(dht.options.TimeToRefreshBuckets).Before(time.Now()) {
-			id := dht.routingTable.getRandomIDFromBucket(bucket)
+		if dht.RoutingTable.table[bucket].lastChanged.Add(dht.options.TimeToRefreshBuckets).Before(time.Now()) {
+			id := dht.RoutingTable.getRandomIDFromBucket(bucket)
 			go dht.LookUP(string(id), "find_node")
 		}
 	}
