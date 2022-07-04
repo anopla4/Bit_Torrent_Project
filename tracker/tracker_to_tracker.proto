@@ -4,10 +4,11 @@ package tracker;
 option go_package = "./tracker_tracker_protocol";
 
 message RePublishQuery {
-	bytes infoHash = 1;
-	string peerID = 2;
-	string IP = 3;         
-	int32 Port = 4;
+	string redKey = 1;
+	bytes infoHash = 2;
+	string peerID = 3;
+	string IP = 4;         
+	int32 Port = 5;
 }
 
 message RePublishResponse {
