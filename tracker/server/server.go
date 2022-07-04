@@ -74,6 +74,7 @@ func loadBkTrackers() (tk.TrackersPool, error) {
 func newTrackerServer(key string) *tk.TrackerServer {
 	return &tk.TrackerServer{Torrents: make(tk.TorrentsPool, 10),
 		RedKey:         key,
+		Interval:       30,
 		BackupTrackers: make(tk.TrackersPool, 5)}
 }
 
@@ -96,6 +97,7 @@ func newTrackerServerFromLoad(key string) *tk.TrackerServer {
 	log.Println("Complete torrents load from backup")
 	tt := &tk.TrackerServer{Torrents: torrentsLoads,
 		RedKey:         key,
+		Interval:       30,
 		BackupTrackers: make(tk.TrackersPool, 5)}
 	return tt
 }
