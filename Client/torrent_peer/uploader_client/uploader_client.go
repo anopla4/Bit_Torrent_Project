@@ -55,7 +55,7 @@ func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsStat
 		log.Fatalf("Can't parse client certificate authority")
 	}
 
-	peers := []*PeerConnection{}
+	// peers := []*PeerConnection{}
 
 	tlsCfg := &tls.Config{
 		Certificates: []tls.Certificate{cert},
@@ -71,7 +71,7 @@ func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsStat
 	}
 	defer l.Close()
 
-	go Choke(peers, cs)
+	// go Choke(peers, cs)
 
 	// Handle connections
 	for {
@@ -112,6 +112,7 @@ type ClientInfo struct {
 }
 
 func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfo, cs *torrent_peer.ConnectionsState, errChan chan error) {
+<<<<<<< HEAD
 	for {
 		// deadlineErr := c.SetReadDeadline(time.Now().Add(30 * time.Second))
 		// if deadlineErr != nil {
@@ -130,10 +131,42 @@ func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfo, cs *torren
 			return
 		}
 
+=======
+	// deadlineErr := c.SetReadDeadline(time.Now().Add(30 * time.Second))
+	// if deadlineErr != nil {
+	// 	errChan <- deadlineErr
+	// 	break
+	// }
+
+	infoHash, id, hshErr := Handshake(c, peerId, errChan)
+
+	if hshErr != nil {
+		errChan <- hshErr
+		return
+	}
+	bfErr := SendBitfield(c, info, infoHash, errChan)
+	fmt.Println("InfoHash", infoHash)
+
+	if bfErr != nil {
+		errChan <- bfErr
+		return
+	}
+
+	pc := &PeerConnection{
+		Choked:     true,
+		Interested: false,
+		Peer:       id,
+		c:          c,
+		InfoHash:   infoHash,
+	}
+	_ = pc.SendUnchoke()
+	for {
+>>>>>>> c9c69cd (fix: Errors)
 		deserializedMessage, err := communication.Deserialize(bufio.NewReader(c))
 		if err != nil {
 			fmt.Println(err)
 			errChan <- err
+<<<<<<< HEAD
 			break
 		}
 		log.Println("Message:", deserializedMessage.ID)
@@ -146,6 +179,11 @@ func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfo, cs *torren
 			InfoHash:   infoHash,
 		}
 
+=======
+			return
+		}
+		log.Println("Message:", deserializedMessage.ID)
+>>>>>>> c9c69cd (fix: Errors)
 		HandleMessage(c, pc, info, deserializedMessage, cs, errChan)
 	}
 	connectionsGroup.Done()
@@ -184,12 +222,17 @@ func Handshake(c net.Conn, peerId string, errChan chan error) ([20]byte, string,
 	return hsh.InfoHash, id, nil
 }
 func SendBitfield(c net.Conn, info *ClientInfo, infoHash [20]byte, errChan chan error) error {
+<<<<<<< HEAD
 	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	defer c.SetDeadline(time.Time{}) // Disable the deadline
+=======
+	// _ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	// defer c.SetDeadline(time.Time{}) // Disable the deadline
+>>>>>>> c9c69cd (fix: Errors)
 
 	msg := communication.Message{ID: communication.BITFIELD, Payload: getClientTorrentFileInfo(info, infoHash).Bitfield}
 	serializedMsg := msg.Serialize()
-	log.Println(serializedMsg)
+	log.Println("Bitfield:", serializedMsg)
 	_, err := c.Write(serializedMsg)
 	if err != nil {
 		log.Printf("Error while sending request: %v\n", err)
@@ -209,24 +252,36 @@ func HandleMessage(c net.Conn, pc *PeerConnection, info *ClientInfo, msg *commun
 
 	switch msg.ID {
 	case communication.CHOKE:
+		log.Println("Choke received")
 		pc.Choked = true
 	case communication.UNCHOKE:
+		log.Println("Unchoke received")
+		log.Println("Remote Addr ", c.RemoteAddr().String())
+		log.Println("Local  Addr ", c.LocalAddr().String())
 		pc.Choked = false
 	case communication.INTERESTED:
+		log.Println("Interested received")
 		pc.PeerInterested = true
 	case communication.NOTINTERESTED:
+		log.Println("NotInterested received")
 		pc.PeerInterested = false
 	case communication.HAVE:
+<<<<<<< HEAD
+=======
+		log.Println("Have received")
+>>>>>>> c9c69cd (fix: Errors)
 		HandleHave(c, cs, msg, pc, info, errChan)
 	case communication.BITFIELD:
 		break
 	case communication.REQUEST:
+		log.Println("Request received")
 		if cs.NumberOfUploadPeers < MaxUploads && pc.PeerChoked {
 			err := pc.SendUnchoke()
 			if err != nil {
 				return
 			}
 		}
+		log.Println(pc.Choked)
 		if !pc.Choked {
 			HandleRequest(c, msg, pc, info, errChan)
 		}
@@ -238,6 +293,8 @@ func HandleMessage(c net.Conn, pc *PeerConnection, info *ClientInfo, msg *commun
 }
 
 func (p *PeerConnection) SendUnchoke() error {
+	//fmt.Println("3")
+	//time.Sleep(3 * time.Second)
 	_, err := p.c.Write((&communication.Message{ID: communication.UNCHOKE}).Serialize())
 	if err != nil {
 		p.PeerChoked = false
@@ -245,7 +302,10 @@ func (p *PeerConnection) SendUnchoke() error {
 	return err
 }
 func (p *PeerConnection) SendChoke() error {
-	_, err := p.c.Write((&communication.Message{ID: communication.UNCHOKE}).Serialize())
+	//fmt.Println("4")
+	//time.Sleep(3 * time.Second)
+
+	_, err := p.c.Write((&communication.Message{ID: communication.CHOKE}).Serialize())
 	if err != nil {
 		p.PeerChoked = true
 	}
@@ -254,13 +314,21 @@ func (p *PeerConnection) SendChoke() error {
 
 func HandleRequest(c net.Conn, msg *communication.Message, pc *PeerConnection, info *ClientInfo, errChan chan error) {
 	index, begin, length, err := communication.ParseRequest(*msg)
-
+	log.Println("Handling request...")
 	if err != nil {
+		log.Println("Error:", err)
 		errChan <- err
 		return
 	}
+<<<<<<< HEAD
 	file, err := os.Open(getClientTorrentFileInfo(info, pc.InfoHash).Path)
 
+=======
+	ci := getClientTorrentFileInfo(info, pc.InfoHash)
+	log.Println("Client info", ci)
+	file, err := os.Open(ci.Path)
+	log.Println("File:", file)
+>>>>>>> c9c69cd (fix: Errors)
 	buf := make([]byte, length)
 	_, bufErr := file.Read(buf)
 
@@ -302,7 +370,11 @@ func HandleHave(c net.Conn, cs *torrent_peer.ConnectionsState, msg *communicatio
 		errChan <- err
 		return
 	}
+<<<<<<< HEAD
 	if time.Now().Sub(cs.LastUpload[pc.Peer]) > 30*time.Second {
+=======
+	if time.Since(cs.LastUpload[pc.Peer]) > 30*time.Second {
+>>>>>>> c9c69cd (fix: Errors)
 		cs.LastUpload[pc.Peer] = time.Now()
 		cs.NumberOfBlocksInLast30Seconds[pc.Peer] = 0
 	} else {
@@ -336,7 +408,7 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 			lastTimeJ := cs.LastUpload[uploadRateOrder[j].Peer]
 			numberOfBlocksJ := cs.NumberOfBlocksInLast30Seconds[uploadRateOrder[j].Peer]
 
-			return numberOfBlocksI/(int(time.Now().Sub(lastTimeI))) > numberOfBlocksJ/(int(time.Now().Sub(lastTimeJ)))
+			return numberOfBlocksI/(int(time.Since(lastTimeI))) > numberOfBlocksJ/(int(time.Since(lastTimeJ)))
 		})
 
 		isContained := false
