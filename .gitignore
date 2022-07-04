@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#
+/tracker/go.sum
+/client_ui/go.sum
