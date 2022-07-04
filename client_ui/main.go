@@ -100,6 +100,13 @@ func main() {
 
 	//tab ONE DOWNLOADED
 
+	//var (
+	//	dest   string
+	//	source string
+	//)
+	//dest = ""
+	//source = ""
+
 	folderLabel := widget.NewLabel("Output folder:")
 	folderEntry := widget.NewEntry()
 	//folderEntry.Disable()
@@ -122,13 +129,14 @@ func main() {
 				}
 				torrentEntry.SetText(torrentPath)
 				log.Println(torrentPath)
+				//source = torrentPath
 				//stat, err := os.Stat(r.URI().Path())
 				dialog.ShowInformation("Selction ", "Success", win)
 			},
 			win,
 		)
 		openDialog.SetFilter(
-			storage.NewExtensionFileFilter([]string{".torrent"}))
+			storage.NewExtensionFileFilter([]string{".pdf"}))
 		openDialog.Show()
 	})
 
@@ -149,6 +157,7 @@ func main() {
 				}
 				log.Println(folderPath)
 				folderEntry.SetText(folderPath)
+				//dest = folderPath
 				dialog.ShowInformation("Selction ", "Success", win)
 			},
 			win,
@@ -163,8 +172,21 @@ func main() {
 		open.Show()
 	})
 
+	downloadButton := widget.NewButton("Start", func() {
+		dest := folderEntry.Text
+		source := torrentEntry.Text
+		if dest == "" || source == "" {
+			log.Println("Is necesary a destinantion and a source")
+			dialog.ShowInformation("Start ", "Failed", win)
+			return
+		}
+		log.Println(source + " ---> " + dest)
+		// Pass to client
+	})
+
 	folderButtons := container.NewHBox(folderOpenButton) //, chestFolderButton, currentFolderButton)
 	torrentButtons := container.NewHBox(torrentOpenButton)
+	downloadsButtons := container.NewCenter(downloadButton)
 
 	download := container.NewVBox(
 		container.New(
@@ -187,6 +209,14 @@ func main() {
 			torrentLabel,
 			torrentEntry,
 			torrentButtons),
+		container.New(
+			layout.NewBorderLayout(
+				nil,
+				nil,
+				nil,
+				downloadsButtons,
+			),
+			downloadsButtons),
 	)
 
 	//Tab Two PUBLISH
