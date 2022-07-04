@@ -21,12 +21,13 @@ func main() {
 func client1() {
 	id := getIDWithB(uint8(5))
 	options := &dht.Options{
-		ID:             id,
-		IP:             "127.0.0.1",
-		Port:           5456,
-		ExpirationTime: time.Minute,
-		RepublishTime:  time.Minute,
-		TimeToDie:      time.Second,
+		ID:                   id,
+		IP:                   "127.0.0.1",
+		Port:                 5456,
+		ExpirationTime:       time.Minute * 10,
+		RepublishTime:        time.Minute * 5,
+		TimeToDie:            time.Second,
+		TimeToRefreshBuckets: time.Minute * 15,
 	}
 	dht1 := dht.NewDHT(options)
 	exitChan := make(chan string)
@@ -44,12 +45,13 @@ func client1() {
 func client2(port int) {
 	id := getIDWithB(uint8(port % 10))
 	options := &dht.Options{
-		ID:             id,
-		IP:             "127.0.0.1",
-		Port:           port,
-		ExpirationTime: time.Minute,
-		RepublishTime:  time.Minute,
-		TimeToDie:      time.Second,
+		ID:                   id,
+		IP:                   "127.0.0.1",
+		Port:                 port,
+		ExpirationTime:       time.Minute,
+		RepublishTime:        time.Minute,
+		TimeToDie:            time.Second,
+		TimeToRefreshBuckets: time.Minute * 15,
 	}
 	dht1 := dht.NewDHT(options)
 	exitChan := make(chan string)

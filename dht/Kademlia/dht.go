@@ -293,9 +293,9 @@ func (dht *DHT) RunServer(exit chan string) {
 	conn := make(chan *net.UDPConn)
 	go server.RunServer(exit, conn)
 	dht.conn = <-conn
-	// go dht.RefreshBuckets()
-	// go dht.checkForExpirationTime()
-	// go dht.CheckExpectedResponses()
+	go dht.RefreshBuckets()
+	go dht.checkForExpirationTime()
+	go dht.CheckExpectedResponses()
 }
 
 // SendMessage send a query message to an addres throug dht.conn
