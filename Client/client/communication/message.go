@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"log"
 )
 
 type IDMessage uint8
@@ -31,6 +32,7 @@ type Bitfield []byte
 func (bf Bitfield) HasPiece(index int) bool {
 	byteIndex := index / 8
 	offset := index % 8
+	fmt.Println("Bitfield:", bf)
 	return bf[byteIndex]>>(7-offset)&1 != 0
 }
 func (bf Bitfield) SetPiece(index int) {
@@ -59,6 +61,7 @@ func (m *Message) Serialize() []byte {
 func Deserialize(r io.Reader) (*Message, error) {
 	lengthBuf := make([]byte, 4)
 	_, err := io.ReadFull(r, lengthBuf)
+	fmt.Println("Length buffer", lengthBuf)
 	if err != nil {
 		return nil, err
 	}
@@ -70,6 +73,8 @@ func Deserialize(r io.Reader) (*Message, error) {
 
 	messageBuf := make([]byte, length)
 	_, err = io.ReadFull(r, messageBuf)
+	fmt.Println("Message buffer", messageBuf)
+
 	if err != nil {
 		return nil, err
 	}
@@ -78,7 +83,7 @@ func Deserialize(r io.Reader) (*Message, error) {
 		ID:      IDMessage(messageBuf[0]),
 		Payload: messageBuf[1:],
 	}
-
+	fmt.Println(*m)
 	return m, nil
 }
 
@@ -106,6 +111,7 @@ func ParseHave(haveMsg Message) (int, error) {
 	return index, nil
 }
 func ParsePiece(index int, buf []byte, pieceMsg Message) (int, error) {
+	log.Println("Parsing piece...")
 	if pieceMsg.ID != PIECE {
 		return 0, fmt.Errorf("Expected HAVE (ID %d), got ID %d", HAVE, pieceMsg.ID)
 	}
@@ -130,7 +136,7 @@ func ParsePiece(index int, buf []byte, pieceMsg Message) (int, error) {
 }
 
 func ParseRequest(requestMsg Message) (int, int, int, error) {
-	if requestMsg.ID != PIECE {
+	if requestMsg.ID != REQUEST {
 		return 0, 0, 0, fmt.Errorf("Expected REQUEST (ID %d), got ID %d", HAVE, requestMsg.ID)
 	}
 	payload := requestMsg.Payload

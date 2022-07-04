@@ -35,6 +35,9 @@ type ConnectionsState struct {
 }
 
 func (c *Client) SendUnchoke() error {
+	// fmt.Println("1")
+	// time.Sleep(3 * time.Second)
+
 	_, err := c.Connection.Write((&communication.Message{ID: communication.UNCHOKE}).Serialize())
 	if err != nil {
 		c.PeerChoked = false
@@ -42,6 +45,9 @@ func (c *Client) SendUnchoke() error {
 	return err
 }
 func (c *Client) SendChoke() error {
+	// fmt.Println("2")
+	// time.Sleep(3 * time.Second)
+
 	_, err := c.Connection.Write((&communication.Message{ID: communication.CHOKE}).Serialize())
 	if err != nil {
 		c.PeerChoked = true
@@ -69,6 +75,7 @@ func (c *Client) SendHave(index int) error {
 }
 func (c *Client) SendRequest(index int, begin int, length int) error {
 	msg := communication.BuildRequestMessage(index, begin, length)
+	log.Println("Request message", msg)
 	_, err := c.Connection.Write(msg.Serialize())
 	return err
 }
@@ -104,6 +111,7 @@ func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, p
 
 	fmt.Println("Receiving bitfield...")
 	bf, bfErr := RecvBitfield(c)
+	fmt.Println("Bitfield:", bf)
 
 	if bfErr != nil {
 		errChan <- bfErr
@@ -111,15 +119,16 @@ func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, p
 	}
 
 	client := &Client{
-		Connection: c,
-		Choked:     true,
-		Interested: false,
-		Bitfield:   bf,
-		Peer:       peer,
-		InfoHash:   infoHash,
-		PeerId:     peerId,
+		Connection:     c,
+		Choked:         true,
+		Interested:     false,
+		PeerChoked:     true,
+		PeerInterested: false,
+		Bitfield:       bf,
+		Peer:           peer,
+		InfoHash:       infoHash,
+		PeerId:         peerId,
 	}
-
 	peers = append(peers, client)
 
 	return client, nil
@@ -141,13 +150,15 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 	// 	return nil, errSD
 	// }
 	// defer c.Connection.SetDeadline(time.Time{}) // Disable the deadline
-
+	fmt.Println("Downloaded:", pp.downloaded)
+	fmt.Println("Task length:", task.length)
 	for pp.downloaded < task.length {
 		// If unchoked, ask for pieces blocks until reach maxBlocks unfulfilled blocks
 		if !c.Choked {
 			for pp.pendingBlocks < MaxBlocks && pp.requested < task.length {
 				blockSize := MaxBlockSize
 				// Last block might be shorter than the typical block
+				fmt.Println(task.length)
 				if task.length-pp.requested < blockSize {
 					blockSize = task.length - pp.requested
 				}
@@ -187,6 +198,7 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 			log.Println("Have received")
 			index, err := communication.ParseHave(*msg)
 			if err != nil {
+				log.Println(err)
 				return nil, err
 			}
 			pp.client.Bitfield.SetPiece(index)
@@ -194,6 +206,7 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 			log.Println("Piece received")
 			n, err := communication.ParsePiece(pp.index, pp.buf, *msg)
 			if err != nil {
+				log.Println(err)
 				return nil, err
 			}
 			pp.downloaded += n
@@ -217,6 +230,7 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 	fmt.Println("Starting peer download...")
 
 	// Dial throw port and ip from peer
+	fmt.Println("Info hash:", t.InfoHash)
 	client, err := StartConnectionWithPeer(peer, t.InfoHash, t.PeerId, peers, errChan)
 	fmt.Println("Connected to peer...")
 
@@ -231,6 +245,7 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 
 	// Send Unchoke and Interested message
 	err = client.SendUnchoke()
+	fmt.Println("Unchoking peer:", client.Peer.IP, client.Peer.Port)
 	if err != nil {
 		errChan <- err
 		return
@@ -266,7 +281,6 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 	fmt.Println("Interval from announce response:", interval)
 	go t.KeepAliveToTracker(interval, IP, p, &left, dp, ctx, tc)
 	mode := "random first"
-	fmt.Println(tasks)
 	for len(tasks) > 0 {
 		i, psErr := SelectPiece(mode, tasks, peers)
 		task := tasks[i]
@@ -279,7 +293,7 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 		}
 
 		// Ask for piece
-		if !client.Bitfield.HasPiece(tasks[i].Index) {
+		if !client.Bitfield.HasPiece(task.Index) {
 			tasks = append(tasks, task)
 			continue
 		}
@@ -296,8 +310,8 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 			continue
 		}
 
-		err = piece.check(task)
 		log.Println("Checking piece...")
+		err = piece.check(task)
 
 		if err != nil {
 			errChan <- err
@@ -327,8 +341,11 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 		}
 		log.Println("Announcing to tracker...")
 		_, tResErr = tc.Announce(ctx, &announce)
-		errChan <- tResErr
+		if tResErr != nil {
+			errChan <- tResErr
+		}
 		responses <- piece
+		fmt.Println(piece)
 	}
 
 }

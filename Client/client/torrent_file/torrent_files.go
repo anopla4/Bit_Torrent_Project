@@ -223,7 +223,7 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 		p, _ := strconv.Atoi(ip[1])
 		peers = append(peers, peer.Peer{Id: k, IP: net.ParseIP(ip[0]), Port: uint16(p)})
 	}
-
+	fmt.Println("Peers:", peers)
 	torrent := torrent_peer.Torrent{
 		Peers:       peers,
 		PeerId:      peerID,
@@ -238,6 +238,7 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 	p, _ := strconv.Atoi(port)
 
 	res, err := torrent.DownloadFile(tc, IP, cs, port)
+	log.Println("File content:", string(res))
 	if err != nil {
 		return err
 	}
