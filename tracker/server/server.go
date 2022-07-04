@@ -6,12 +6,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-
-	//"os"
-
-	//"io/fs"
 	"io/ioutil"
-	//"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,73 +25,6 @@ import (
 	ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
-
-//func exampleTracker() (tk.TorrentsPool, error) {
-//	peers := make(tk.PeersPool, 3)
-//	peers["peerId1"] = &tk.PeerTk{
-//		ID:    "peerId1",
-//		State: "seeder",
-//		Addr:  &net.TCPAddr{IP: net.ParseIP("108.56.6.6"), Port: 5000},
-//	}
-//	peers["peerIdX"] = &tk.PeerTk{
-//		ID:    "peerIdX",
-//		State: "lecher",
-//		Addr:  &net.TCPAddr{IP: net.ParseIP("190.122.0.4"), Port: 5000},
-//	}
-//
-//	torrents := make(tk.TorrentsPool, 5)
-//	torrents["12345678912345678900"] = &tk.TorrentTk{
-//		Hash:       "12345678912345678900",
-//		Downloaded: 0,
-//		Complete:   0,
-//		Peers:      peers,
-//	}
-//	torrents["0000000000000000000"] = &tk.TorrentTk{
-//		Hash:       "0000000000000000000",
-//		Downloaded: 200,
-//		Complete:   11,
-//		Peers:      peers,
-//	}
-//
-//	return torrents, nil
-//}
-//
-//func jsonPruve(tp tk.TorrentsPool) error {
-//	jso, err := json.MarshalIndent(tp, "", " ")
-//	if err != nil {
-//		fmt.Println(err.Error())
-//		return err
-//	}
-//	//fmt.Println(string(jso))
-//	e := ioutil.WriteFile("bkdata/torrents.json", jso, fs.ModeExclusive)
-//	if e != nil {
-//		fmt.Println(e.Error())
-//		return e
-//	}
-//	fmt.Println()
-//
-//	tpp := tk.TorrentsPool{}
-//
-//	err = json.Unmarshal(jso, &tpp)
-//	if err != nil {
-//		fmt.Println(err.Error())
-//		return err
-//	}
-//	return nil
-//}
-//
-//func runPruve() {
-//	ts, err := exampleTracker()
-//	if err != nil {
-//		fmt.Println(err.Error())
-//		return
-//	}
-//	e := jsonPruve(ts)
-//	if e != nil {
-//		fmt.Println(e.Error())
-//		return
-//	}
-//}
 
 func loadTLSCredentials() (credentials.TransportCredentials, error) {
 
@@ -132,19 +60,20 @@ func loadBkTrackers() (tk.TrackersPool, error) {
 	var bktkLoads = tk.TrackersPool{}
 	err = json.Unmarshal(btks, &bktkLoads)
 	if err != nil {
-		log.Println(err.Error())
+		log.Println("Failed unmarshal to bkTracker: " + err.Error())
 		return make(tk.TrackersPool, 10), err
 	}
 	if len(bktkLoads) == 0 {
-		log.Println("Empty backup")
+		log.Println("Empty backupTrackers")
 		return make(tk.TrackersPool, 10), err
 	}
+	log.Println("Complete bkTrackers load from backup")
 	return bktkLoads, nil
 }
 
 func newTrackerServer(key string) *tk.TrackerServer {
 	return &tk.TrackerServer{Torrents: make(tk.TorrentsPool, 10),
-		RedKey:          key,
+		RedKey:         key,
 		BackupTrackers: make(tk.TrackersPool, 5)}
 }
 
@@ -164,8 +93,9 @@ func newTrackerServerFromLoad(key string) *tk.TrackerServer {
 		log.Println("Empty backup")
 		return newTrackerServer(key)
 	}
+	log.Println("Complete torrents load from backup")
 	tt := &tk.TrackerServer{Torrents: torrentsLoads,
-		RedKey:          key,
+		RedKey:         key,
 		BackupTrackers: make(tk.TrackersPool, 5)}
 	return tt
 }
@@ -261,7 +191,7 @@ func makeKnowMeConnection(parentCtx context.Context, addr, key, myIP string, myP
 		if res.Status == tk.OK || res.Status == tk.ALREADYKNOWOK {
 			s := strings.Split(addr, ":")
 			p, _ := strconv.Atoi(s[1])
-			ch <- tk.BkTracker{IP: net.ParseIP(s[0]), Port: p, LastSeen: time.Now()}
+			ch <- tk.BkTracker{IP: net.ParseIP(s[0]), Port: p}
 		}
 	}
 }
@@ -299,8 +229,8 @@ loop:
 		case <-ctx.Done():
 			break loop
 		default:
-			time.Sleep(30 * time.Second)
-			log.Println("asa")
+			time.Sleep(time.Duration(int64(saveTime) * int64(time.Second)))
+			//fmt.Println("TICK")
 			ts.RLock()
 			var wg sync.WaitGroup
 			wg.Add(2)
@@ -308,6 +238,7 @@ loop:
 			go saveBkTk(&ts.BackupTrackers, &wg)
 			wg.Wait()
 			ts.RUnlock()
+			log.Println("copie finish.")
 		}
 	}
 }
@@ -316,7 +247,7 @@ func main() {
 	saveTime := flag.Int("saveTime", 600, "seconds time between two save copies")
 	newBTkFromSource := flag.String("nBkTk", "", "set the path of json with backup tracker directions")
 	redKeySeed := flag.String("redKey", "", "set the password for the tk to tk communication")
-	enableTlS := flag.Bool("tls", false, "enablecurity")
+	enableTlS := flag.Bool("tls", false, "enablesecurity")
 	load := flag.Bool("load", false, "load state from source")
 	ip := flag.String("ip", "localhost", "set ip address of the tracker")
 	port := flag.Int("port", 8168, "set port for TCP conection on GRPC server")
@@ -324,13 +255,17 @@ func main() {
 	if *redKeySeed == "" {
 		log.Fatalln("The redKey flag is required for security of tacker communication. Set '-redKey' flag")
 	}
+	log.Println("Flag set--> redKey")
 	redKey := sha256.Sum256([]byte(*redKeySeed))
+
+	log.Println("Flag set--> saveTime")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	var trackerServer *tk.TrackerServer
 	if *load {
+		log.Println("Flag set--> load ")
 		trackerServer = newTrackerServerFromLoad(string(redKey[:]))
 		trackerServer.BackupTrackers, _ = loadBkTrackers()
 	} else {
@@ -348,6 +283,7 @@ func main() {
 			log.Fatal("cannot load TLS credentials: ", err)
 		}
 		sr = grpc.NewServer(grpc.Creds(tlsCredentials))
+		log.Println("TLS Enabled")
 	} else {
 		sr = grpc.NewServer()
 	}
@@ -355,8 +291,9 @@ func main() {
 	log.Printf("Server in: %s port:%d \n", *ip, *port)
 
 	if *newBTkFromSource == "" {
-		log.Println("No source for backup tracker. Nothing happen, but the red is less strong")
+		log.Println("No source for backup trackers. Skip..")
 	} else {
+		log.Println("nBkTK flag set")
 		tkQueue, err := getNewBkTrackersAddrs(*newBTkFromSource)
 		if err != nil {
 			log.Println("Problems loading backup tracker. Nothing happen, but the red is less strong> " + err.Error())
