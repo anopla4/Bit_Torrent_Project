@@ -8,8 +8,8 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
-	"net"
 	"sort"
+	"sync"
 	"time"
 	"trackerpb"
 )
@@ -67,19 +67,18 @@ func (t *Torrent) pieceLength(index int) int {
 	return t.PieceLength
 }
 
-func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, cs *ConnectionsState, port string) ([]byte, error) {
+func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP string, cs *ConnectionsState, port string) ([]byte, error) {
 	log.Printf("Starting downloading %v file", t.Name)
-
+	wg := sync.WaitGroup{}
 	// Channel of pieces downloads tasks to be completed
-	// tasks := make(chan *PieceTask, len(t.PiecesHash))
 	tasks := []*PieceTask{}
 
 	// Channel of pieces results
 	responses := make(chan *pieceResult)
 
+	fmt.Println("Pieces hash:", t.PiecesHash)
 	for i, p := range t.PiecesHash {
 		l := t.pieceLength(i)
-		// tasks <- &PieceTask{Index: i, hash: p, length: l}
 		tasks = append(tasks, &PieceTask{Index: i, hash: p, length: l})
 	}
 
@@ -92,13 +91,23 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, cs *Connec
 		left:          uint64(t.Length),
 	}
 	peers := []*Client{}
-	for _, peer := range t.Peers {
-		go t.StartPeerDownload(dp, peer, tasks, responses, tc, IP, port, peers, cs, errChan)
+	for _, peer_ := range t.Peers {
+		fmt.Printf("Peer: %v\n", peer_)
+		wg.Add(1)
+		go func(p peer.Peer) {
+			t.StartPeerDownload(dp, p, tasks, responses, tc, IP, port, peers, cs, errChan)
+			wg.Done()
+		}(peer_)
 	}
 
-	go Choke(peers, cs)
+	wg.Add(1)
+	go func() {
+		Choke(peers, cs)
+		wg.Done()
+	}()
 
 	// Catch errors in downloads
+	wg.Add(1)
 	go func(errChan chan error) {
 		for {
 			if connErr, ok := <-errChan; ok {
@@ -106,8 +115,9 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, cs *Connec
 				break
 			}
 		}
+		wg.Done()
 	}(errChan)
-
+	wg.Wait()
 	// Collect results from peers
 	buf := make([]byte, t.Length)
 	donePieces := 0
@@ -124,6 +134,7 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP net.IP, cs *Connec
 	}
 	close(responses)
 	close(errChan)
+	log.Println("Exiting from DownloadFile")
 	return buf, nil
 }
 
@@ -142,7 +153,7 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 				}
 			}
 		}
-		if round%3 == 0 {
+		if round%3 == 0 && len(forOptimisticUnchoke) > 0 {
 			n := rand.Intn(len(forOptimisticUnchoke))
 			optimisticChoked = *forOptimisticUnchoke[n]
 		}
@@ -152,18 +163,22 @@ func Choke(peers []*Client, cs *ConnectionsState) {
 			lastTimeJ := cs.LastUpload[uploadRateOrder[j].PeerId]
 			numberOfBlocksJ := cs.NumberOfBlocksInLast30Seconds[uploadRateOrder[j].PeerId]
 
-			return numberOfBlocksI/(int(time.Now().Sub(lastTimeI))) > numberOfBlocksJ/(int(time.Now().Sub(lastTimeJ)))
+			return numberOfBlocksI/(int(time.Since(lastTimeI))) > numberOfBlocksJ/(int(time.Since(lastTimeJ)))
 		})
 
 		isContained := false
-		for _, peer := range uploadRateOrder[0:3] {
+		toUnchoke := uploadRateOrder
+		if len(uploadRateOrder) >= 3 {
+			toUnchoke = uploadRateOrder[0:3]
+		}
+		for _, peer := range toUnchoke {
 			peer.SendUnchoke()
 			unchoked = append(unchoked, peer)
 			if peer.PeerId == optimisticChoked.PeerId {
 				isContained = true
 			}
 		}
-		if round%3 == 0 {
+		if round%3 == 0 && len(forOptimisticUnchoke) > 0 {
 			if !isContained {
 				optimisticChoked.SendUnchoke()
 				unchoked = append(unchoked, &optimisticChoked)

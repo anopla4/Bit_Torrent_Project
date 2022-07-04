@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net"
 	"strconv"
 	"trackerpb"
 
@@ -17,7 +16,7 @@ import (
 
 const PORT = "50051"
 
-func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string, IP net.IP, ctx context.Context) map[string]string {
+func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string, IP string, ctx context.Context) map[string]string {
 	announceResp := Announce(trackerpb.NewTrackerClient(cc), ctx, infoHash, IP, peerId)
 	return announceResp.GetPeers()
 }
@@ -49,7 +48,7 @@ func TrackerClient(trackerUrl string) (*grpc.ClientConn, context.Context, error)
 	return cc, ctx, nil
 }
 
-func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP net.IP) *trackerpb.PublishResponse {
+func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP string) *trackerpb.PublishResponse {
 	cc, ctx, err := TrackerClient(trackerUrl)
 	c := trackerpb.NewTrackerClient(cc)
 	defer cc.Close()
@@ -62,7 +61,7 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP net.
 	req := &trackerpb.PublishQuery{
 		InfoHash: infoHash[:],
 		PeerID:   peerId,
-		IP:       IP.String(),
+		IP:       IP,
 		Port:     int32(port),
 	}
 
@@ -76,13 +75,13 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP net.
 	return res
 }
 
-func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte, IP net.IP, peerId string) *trackerpb.AnnounceResponse {
+func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte, IP string, peerId string) *trackerpb.AnnounceResponse {
 	fmt.Println("Starting to do an Announce RPC...")
 	port, _ := strconv.Atoi(PORT)
 	req := &trackerpb.AnnounceQuery{
 		InfoHash: infoHash[:],
 		PeerID:   peerId,
-		IP:       IP.String(),
+		IP:       IP,
 		Port:     int32(port),
 		Event:    "request",
 		Request:  true,

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const port = "50051"
+const port = "50052"
 const MaxUploads = 4
 
 var connectionsGroup = sync.WaitGroup{}
@@ -39,7 +39,7 @@ type Server struct {
 	DownloadRate map[string]int
 }
 
-func ServerTCP(info *ClientInfoParsed, peerId string, servers []*Server, cs *torrent_peer.ConnectionsState, errChan chan error) error {
+func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsState, errChan chan error) error {
 	// Setting SSL certificate
 	cert, err := tls.LoadX509KeyPair("./SSL/server.pem", "./SSL/server.key")
 	if err != nil {
@@ -64,7 +64,7 @@ func ServerTCP(info *ClientInfoParsed, peerId string, servers []*Server, cs *tor
 	}
 
 	// Start listening for new connections
-	l, listenErr := tls.Listen("tcp", "localhost"+":"+port, tlsCfg)
+	l, listenErr := tls.Listen("tcp", "192.168.169.14"+":"+port, tlsCfg)
 	if listenErr != nil {
 		fmt.Println(listenErr)
 		return listenErr
@@ -93,83 +93,50 @@ func ServerTCP(info *ClientInfoParsed, peerId string, servers []*Server, cs *tor
 		}
 
 		connectionsGroup.Add(1)
-		go HandleTCPConnection(c, peerId, info, cs, servers, errChan)
+		go HandleTCPConnection(c, peerId, info, cs, errChan)
 
 		connectionsGroup.Wait()
 	}
 }
 
 type ClientTorrentFileInfo struct {
-	Pieces      []string
-	Bitfield    communication.Bitfield
-	Path        string
-	PieceLength int
-}
-
-type ClientTorrentFileInfoParsed struct {
 	Pieces      [][20]byte
 	Bitfield    communication.Bitfield
 	Path        string
 	PieceLength int
+	InfoHash    [20]byte
 }
 
 type ClientInfo struct {
 	TorrentFiles map[string]ClientTorrentFileInfo
 }
 
-type ClientInfoParsed struct {
-	TorrentFiles map[[20]byte]ClientTorrentFileInfoParsed
-}
-
-func (ci *ClientInfo) ParseInfo() ClientInfoParsed {
-	res := ClientInfoParsed{}
-	for k, v := range ci.TorrentFiles {
-		citfp := ClientTorrentFileInfoParsed{
-			Pieces:      [][20]byte{},
-			Bitfield:    v.Bitfield,
-			Path:        v.Path,
-			PieceLength: v.PieceLength,
-		}
-		for _, ps := range v.Pieces {
-			ph := [20]byte{}
-			copy(ph[:], []byte(ps))
-			citfp.Pieces = append(citfp.Pieces, ph)
-		}
-		infoHash := [20]byte{}
-		copy(infoHash[:], []byte(k))
-		res.TorrentFiles[infoHash] = citfp
-	}
-	return res
-}
-
-func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfoParsed, cs *torrent_peer.ConnectionsState, servers []*Server, errChan chan error) {
+func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfo, cs *torrent_peer.ConnectionsState, errChan chan error) {
 	for {
-		deadlineErr := c.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if deadlineErr != nil {
-			errChan <- deadlineErr
-			break
+		// deadlineErr := c.SetReadDeadline(time.Now().Add(30 * time.Second))
+		// if deadlineErr != nil {
+		// 	errChan <- deadlineErr
+		// 	break
+		// }
+
+		infoHash, id, hshErr := Handshake(c, peerId, errChan)
+
+		if hshErr != nil {
+			return
 		}
+		bfErr := SendBitfield(c, info, infoHash, errChan)
+
+		if bfErr != nil {
+			return
+		}
+
 		deserializedMessage, err := communication.Deserialize(bufio.NewReader(c))
 		if err != nil {
 			fmt.Println(err)
 			errChan <- err
 			break
 		}
-		log.Println(deserializedMessage.ID)
-
-		infoHash, id, hshErr := Handshake(c, peerId, errChan)
-
-		s, found := FindServer(servers, infoHash)
-
-		if !found {
-			s = &Server{}
-			s.InfoHash = infoHash
-			servers = append(servers, s)
-		}
-
-		if hshErr != nil {
-			return
-		}
+		log.Println("Message:", deserializedMessage.ID)
 
 		pc := &PeerConnection{
 			Choked:     true,
@@ -179,13 +146,7 @@ func HandleTCPConnection(c net.Conn, peerId string, info *ClientInfoParsed, cs *
 			InfoHash:   infoHash,
 		}
 
-		bfErr := SendBitfield(c, info, infoHash, errChan)
-
-		if bfErr != nil {
-			return
-		}
-
-		HandleMessage(c, pc, info, deserializedMessage, cs, s, errChan)
+		HandleMessage(c, pc, info, deserializedMessage, cs, errChan)
 	}
 	connectionsGroup.Done()
 }
@@ -202,8 +163,8 @@ func FindServer(servers []*Server, infoHash [20]byte) (*Server, bool) {
 }
 
 func Handshake(c net.Conn, peerId string, errChan chan error) ([20]byte, string, error) {
-	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
-	defer c.SetDeadline(time.Time{}) // Disable the deadline
+	// _ = c.SetReadDeadline(time.Now().Add(10 * time.Second))
+	// defer c.SetReadDeadline(time.Time{}) // Disable the deadline
 
 	hsh, err := communication.DeserializeHandshake(c)
 	if err != nil {
@@ -222,11 +183,11 @@ func Handshake(c net.Conn, peerId string, errChan chan error) ([20]byte, string,
 
 	return hsh.InfoHash, id, nil
 }
-func SendBitfield(c net.Conn, info *ClientInfoParsed, infoHash [20]byte, errChan chan error) error {
-	_ = c.SetDeadline(time.Now().Add(3 * time.Second))
+func SendBitfield(c net.Conn, info *ClientInfo, infoHash [20]byte, errChan chan error) error {
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	defer c.SetDeadline(time.Time{}) // Disable the deadline
 
-	msg := communication.Message{ID: communication.BITFIELD, Payload: info.TorrentFiles[infoHash].Bitfield}
+	msg := communication.Message{ID: communication.BITFIELD, Payload: getClientTorrentFileInfo(info, infoHash).Bitfield}
 	serializedMsg := msg.Serialize()
 	log.Println(serializedMsg)
 	_, err := c.Write(serializedMsg)
@@ -238,7 +199,7 @@ func SendBitfield(c net.Conn, info *ClientInfoParsed, infoHash [20]byte, errChan
 	return nil
 }
 
-func HandleMessage(c net.Conn, pc *PeerConnection, info *ClientInfoParsed, msg *communication.Message, cs *torrent_peer.ConnectionsState, s *Server, errChan chan error) {
+func HandleMessage(c net.Conn, pc *PeerConnection, info *ClientInfo, msg *communication.Message, cs *torrent_peer.ConnectionsState, errChan chan error) {
 	_ = c.SetDeadline(time.Now().Add(30 * time.Second))
 	defer c.SetDeadline(time.Time{}) // Disable the deadline
 
@@ -256,7 +217,7 @@ func HandleMessage(c net.Conn, pc *PeerConnection, info *ClientInfoParsed, msg *
 	case communication.NOTINTERESTED:
 		pc.PeerInterested = false
 	case communication.HAVE:
-		HandleHave(c, s, msg, pc, info, errChan)
+		HandleHave(c, cs, msg, pc, info, errChan)
 	case communication.BITFIELD:
 		break
 	case communication.REQUEST:
@@ -291,14 +252,14 @@ func (p *PeerConnection) SendChoke() error {
 	return err
 }
 
-func HandleRequest(c net.Conn, msg *communication.Message, pc *PeerConnection, info *ClientInfoParsed, errChan chan error) {
+func HandleRequest(c net.Conn, msg *communication.Message, pc *PeerConnection, info *ClientInfo, errChan chan error) {
 	index, begin, length, err := communication.ParseRequest(*msg)
 
 	if err != nil {
 		errChan <- err
 		return
 	}
-	file, err := os.Open(info.TorrentFiles[pc.InfoHash].Path)
+	file, err := os.Open(getClientTorrentFileInfo(info, pc.InfoHash).Path)
 
 	buf := make([]byte, length)
 	_, bufErr := file.Read(buf)
@@ -311,7 +272,7 @@ func HandleRequest(c net.Conn, msg *communication.Message, pc *PeerConnection, i
 	piecePayload := make([]byte, 8+length)
 	binary.BigEndian.PutUint32(piecePayload, uint32(index))
 	binary.BigEndian.PutUint32(piecePayload[4:8], uint32(begin))
-	copy(piecePayload[8:], buf[index*info.TorrentFiles[pc.InfoHash].PieceLength:])
+	copy(piecePayload[8:], buf[index*getClientTorrentFileInfo(info, pc.InfoHash).PieceLength:])
 
 	pieceMsg := communication.Message{ID: communication.PIECE, Payload: piecePayload}
 
@@ -324,14 +285,29 @@ func HandleRequest(c net.Conn, msg *communication.Message, pc *PeerConnection, i
 		return
 	}
 }
-func HandleHave(c net.Conn, s *Server, msg *communication.Message, pc *PeerConnection, info *ClientInfoParsed, errChan chan error) {
+
+func getClientTorrentFileInfo(info *ClientInfo, infoHash [20]byte) ClientTorrentFileInfo {
+	for _, tf := range info.TorrentFiles {
+		if tf.InfoHash == infoHash {
+			return tf
+		}
+	}
+	return ClientTorrentFileInfo{}
+}
+
+func HandleHave(c net.Conn, cs *torrent_peer.ConnectionsState, msg *communication.Message, pc *PeerConnection, info *ClientInfo, errChan chan error) {
 	_, err := communication.ParseHave(*msg)
 	if err != nil {
 		log.Fatalf("Error while parsing HAVE message: %v\n", err)
 		errChan <- err
 		return
 	}
-	s.DownloadRate[pc.Peer]++
+	if time.Now().Sub(cs.LastUpload[pc.Peer]) > 30*time.Second {
+		cs.LastUpload[pc.Peer] = time.Now()
+		cs.NumberOfBlocksInLast30Seconds[pc.Peer] = 0
+	} else {
+		cs.NumberOfBlocksInLast30Seconds[pc.Peer]++
+	}
 }
 
 func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
@@ -339,7 +315,7 @@ func Choke(peers []*PeerConnection, cs *torrent_peer.ConnectionsState) {
 	optimisticChoked := PeerConnection{}
 	unchoked := []*PeerConnection{}
 
-	for {
+	for len(peers) > 0 {
 		uploadRateOrder := []*PeerConnection{}
 		forOptimisticUnchoke := []*PeerConnection{}
 		for _, p := range peers {
