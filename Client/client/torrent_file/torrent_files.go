@@ -4,6 +4,7 @@ import (
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/client/tracker_communication"
 	"Bit_Torrent_Project/client/torrent_peer"
+	dht "Bit_Torrent_Project/dht/Kademlia"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -25,15 +26,14 @@ type BencodeTorrent struct {
 	Info     BencodeInfo
 }
 
+// Converts a BencodeTorrent int a TorrentFile
 func (bto *BencodeTorrent) ConvertToTorrentFile() (*TorrentFile, error) {
 	infoHash := bto.Info.InfoHash
-	fmt.Println("Pieces strings hashes:", bto.Info.Pieces)
 	pieces, err := bto.Info.splitPiecesHash()
 
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Bencode pieces:", pieces)
 
 	tf := &TorrentFile{
 		Announce: bto.Announce,
@@ -55,31 +55,6 @@ type BencodeInfo struct {
 	Pieces      string   `bencode:"pieces"`
 	Length      int      `bencode:"length"`
 }
-
-func (i *BencodeInfo) hash() ([20]byte, error) {
-	var buf bytes.Buffer
-	err := bencode.Marshal(&buf, *i)
-	if err != nil {
-		return [20]byte{}, err
-	}
-	h := sha1.Sum(buf.Bytes())
-	return h, nil
-}
-
-// func (i *BencodeInfo) splitPiecesHash() ([][20]byte, error) {
-// 	// Create slice of bytes from Pieces string
-// 	buf := []byte(i.Pieces)
-// 	if len(buf)%20 != 0 {
-// 		err := fmt.Errorf("Received malformed pieces of length %d", len(buf))
-// 		return nil, err
-// 	}
-
-// 	piecesHash := make([][20]byte, len(i.Pieces)/20)
-// 	for j := 0; j < len(buf); j += 20 {
-// 		copy(piecesHash[j%20][:], buf[j:j+20])
-// 	}
-// 	return piecesHash, nil
-// }
 
 func (i *BencodeInfo) splitPiecesHash() ([][20]byte, error) {
 	hashLen := 20 // Length of SHA-1 hash
@@ -116,6 +91,7 @@ type File struct {
 	Path   []string
 }
 
+// Builds and saves .torrent of filePath in dstPath
 func BuildTorrentFile(filePath string, dstPath string, trackerUrl string) error {
 	file, err := os.Open(filePath)
 
@@ -124,6 +100,7 @@ func BuildTorrentFile(filePath string, dstPath string, trackerUrl string) error 
 		return err
 	}
 	defer file.Close()
+
 	// Name
 	name := file.Name()
 
@@ -153,6 +130,7 @@ func BuildTorrentFile(filePath string, dstPath string, trackerUrl string) error 
 	piecesHash := ""
 	if int(length)/pieceLength == 0 {
 		hash := sha1.Sum(buf[0:])
+		fmt.Println(hash)
 		piecesHash += string(hash[:])
 	}
 
@@ -186,6 +164,7 @@ func BuildTorrentFile(filePath string, dstPath string, trackerUrl string) error 
 	return nil
 }
 
+// Opens .torrent from path
 func OpenTorrentFile(path string) (*TorrentFile, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -198,22 +177,35 @@ func OpenTorrentFile(path string) (*TorrentFile, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Bencoded torrent:", bencodeTorrent)
 
 	return bencodeTorrent.ConvertToTorrentFile()
 
 }
 
-func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState, peerID string) error {
+// Downloads file with .torrent in path
+func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState, IP string, peerID string, dhtNode *dht.DHT) ([]*torrent_peer.PieceResult, [20]byte, string, error) {
 	fmt.Println("DownloadTo...")
 	c, ctx, err := tracker_communication.TrackerClient(tf.Announce)
-	IP := "192.168.169.14"
+	if err != nil {
+		fmt.Printf("Error while connecting to tracker: %v\n", err)
+		return nil, [20]byte{}, "", err
+	}
 
 	fmt.Println("Requesting peers...")
-	peersDict := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]), IP, ctx)
+	peersDict, err := tracker_communication.RequestPeers(c, tf.Announce, tf.Info.InfoHash, string(peerID[:]), IP, ctx)
+
 	if err != nil {
-		fmt.Printf("Error while requesting peers: %v\n", err)
-		return err
+		log.Printf("Error while requesting peers from tracker: %v\n", err)
+		addrs, errDHT := dhtNode.GetPeersToDownload(tf.Info.InfoHash[:])
+		if errDHT != nil {
+			log.Printf("Error while requesting peers from dht: %v\n", err)
+			return nil, [20]byte{}, "", errDHT
+		}
+		peersDict = map[string]string{}
+		for i, addr := range addrs {
+			peersDict[strconv.Itoa(i)] = addr
+		}
+
 	}
 
 	peers := make([]peer.Peer, 0, len(peersDict))
@@ -233,16 +225,22 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 		Length:      tf.Info.Length,
 		Name:        tf.Info.Name,
 	}
-	tc := trackerpb.NewTrackerClient(c)
+	var tc trackerpb.TrackerClient
+	if err != nil {
+		tc = nil
+	} else {
+
+		tc = trackerpb.NewTrackerClient(c)
+	}
 
 	p, _ := strconv.Atoi(port)
 
-	res, err := torrent.DownloadFile(tc, IP, cs, port)
-	log.Println("File content:", string(res))
+	pieces, infoHash, bitfield, res, err := torrent.DownloadFile(tc, IP, cs, port, dhtNode)
 	if err != nil {
-		return err
+		return nil, [20]byte{}, "", err
 	}
 	defer func() {
+		log.Println("Stopping client...")
 		announce := trackerpb.AnnounceQuery{
 			InfoHash: tf.Info.InfoHash[:],
 			PeerID:   peerID,
@@ -253,6 +251,7 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 		_, _ = tc.Announce(ctx, &announce)
 	}()
 
+	log.Println("Sending completed to tracker...")
 	announce := trackerpb.AnnounceQuery{
 		InfoHash: tf.Info.InfoHash[:],
 		PeerID:   peerID,
@@ -262,18 +261,18 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 	}
 	_, tResErr := tc.Announce(ctx, &announce)
 	if tResErr != nil {
-		return tResErr
+		return nil, [20]byte{}, "", tResErr
 	}
 
 	outFile, err := os.Create(path + torrent.Name)
 	if err != nil {
 		log.Printf("Error while creating destiny file: %v\n", err)
-		return err
+		return nil, [20]byte{}, "", err
 	}
 	defer outFile.Close()
 	_, err = outFile.Write(res)
 	if err != nil {
-		return err
+		return nil, [20]byte{}, "", err
 	}
-	return nil
+	return pieces, infoHash, bitfield, nil
 }

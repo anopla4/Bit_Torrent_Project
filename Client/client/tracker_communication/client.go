@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -16,11 +17,16 @@ import (
 
 const PORT = "50051"
 
-func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string, IP string, ctx context.Context) map[string]string {
-	announceResp := Announce(trackerpb.NewTrackerClient(cc), ctx, infoHash, IP, peerId)
-	return announceResp.GetPeers()
+// Requests peers to trackers
+func RequestPeers(cc *grpc.ClientConn, trackerUrl string, infoHash [20]byte, peerId string, IP string, ctx context.Context) (map[string]string, error) {
+	announceResp, err := Announce(trackerpb.NewTrackerClient(cc), ctx, infoHash, IP, peerId)
+	if err != nil {
+		return nil, err
+	}
+	return announceResp.GetPeers(), nil
 }
 
+// Creates grpc connection with tracker
 func TrackerClient(trackerUrl string) (*grpc.ClientConn, context.Context, error) {
 	fmt.Println("Hello I'm a client")
 
@@ -42,12 +48,13 @@ func TrackerClient(trackerUrl string) (*grpc.ClientConn, context.Context, error)
 		log.Fatalf("Could not connect: %v", err)
 		return nil, nil, err
 	}
-
+	log.Println("Connected to tracker")
 	ctx := context.Background()
 
 	return cc, ctx, nil
 }
 
+// Publishes new torrent in tracker
 func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP string) *trackerpb.PublishResponse {
 	cc, ctx, err := TrackerClient(trackerUrl)
 	c := trackerpb.NewTrackerClient(cc)
@@ -75,7 +82,8 @@ func PublishTorrent(trackerUrl string, infoHash [20]byte, peerId string, IP stri
 	return res
 }
 
-func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte, IP string, peerId string) *trackerpb.AnnounceResponse {
+// Sends first announce to tracker
+func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte, IP string, peerId string) (*trackerpb.AnnounceResponse, error) {
 	fmt.Println("Starting to do an Announce RPC...")
 	port, _ := strconv.Atoi(PORT)
 	req := &trackerpb.AnnounceQuery{
@@ -91,10 +99,13 @@ func Announce(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte,
 		log.Fatalf("Error while calling Announce RPC: %v", err)
 	}
 	log.Printf("Response from Announce: %v", res.GetInterval())
-
-	return res
+	if res.FailureReason != "" {
+		return nil, errors.New(res.FailureReason)
+	}
+	return res, nil
 }
 
+// Calls Scrape RPC of tracker
 func Scrape(c trackerpb.TrackerClient, ctx context.Context, infoHash [20]byte) *trackerpb.ScraperResponse {
 	fmt.Println("Starting to do a Scrape RPC...")
 

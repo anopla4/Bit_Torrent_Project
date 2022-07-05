@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"time"
 )
 
+// Sends handshake to c peer
 func SendHandshake(c net.Conn, infoHash [20]byte, peerId string) error {
 	// _ = c.SetDeadline(time.Now().Add(10 * time.Second))
 	// defer c.SetDeadline(time.Time{}) // Disable the deadline
@@ -23,6 +25,7 @@ func SendHandshake(c net.Conn, infoHash [20]byte, peerId string) error {
 	return nil
 }
 
+// Starts a new TCP connection
 func StartConnection(url string, errChan chan error) net.Conn {
 	cert, tlsErr := tls.LoadX509KeyPair("./SSL/client.pem", "./SSL/client.key")
 
@@ -44,8 +47,11 @@ func StartConnection(url string, errChan chan error) net.Conn {
 	return c
 }
 
+// Starts and sends handshake to peer
 func StartClientTCP(url string, infoHash [20]byte, id string, peerId string, errChan chan error) (net.Conn, error) {
 	c := StartConnection(url, errChan)
+	log.Println("Sleeping...")
+	time.Sleep(4 * time.Second)
 	hshErr := SendHandshake(c, infoHash, id)
 
 	if hshErr != nil {

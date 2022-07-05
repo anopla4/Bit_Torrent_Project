@@ -11,6 +11,7 @@ type Handshake struct {
 	InfoHash [20]byte
 }
 
+// Serializes a handshake
 func (hsh *Handshake) Serialize() []byte {
 	buf := make([]byte, len(hsh.Pstr)+49)
 	buf[0] = byte(len(hsh.Pstr))
@@ -22,6 +23,7 @@ func (hsh *Handshake) Serialize() []byte {
 	return buf
 }
 
+// Reads and deserializes handshake
 func DeserializeHandshake(r io.Reader) (*Handshake, error) {
 	pstrLength := make([]byte, 1)
 	_, err := io.ReadFull(r, pstrLength)

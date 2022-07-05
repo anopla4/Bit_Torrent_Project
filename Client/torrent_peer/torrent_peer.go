@@ -4,6 +4,7 @@ import (
 	"Bit_Torrent_Project/client/client/communication"
 	"Bit_Torrent_Project/client/client/peer"
 	"Bit_Torrent_Project/client/torrent_peer/downloader_client"
+	dht "Bit_Torrent_Project/dht/Kademlia"
 	"context"
 	"fmt"
 	"log"
@@ -14,7 +15,7 @@ import (
 )
 
 var MaxBlocks = 5
-var MaxBlockSize = 16384
+var MaxBlockSize = 16
 
 type Client struct {
 	Connection     net.Conn
@@ -34,26 +35,25 @@ type ConnectionsState struct {
 	NumberOfUploadPeers           int
 }
 
+// Sends UNCHOKE message
 func (c *Client) SendUnchoke() error {
-	// fmt.Println("1")
-	// time.Sleep(3 * time.Second)
-
 	_, err := c.Connection.Write((&communication.Message{ID: communication.UNCHOKE}).Serialize())
 	if err != nil {
 		c.PeerChoked = false
 	}
 	return err
 }
-func (c *Client) SendChoke() error {
-	// fmt.Println("2")
-	// time.Sleep(3 * time.Second)
 
+// Sends CHOKE message
+func (c *Client) SendChoke() error {
 	_, err := c.Connection.Write((&communication.Message{ID: communication.CHOKE}).Serialize())
 	if err != nil {
 		c.PeerChoked = true
 	}
 	return err
 }
+
+// Sends INTERESTED message
 func (c *Client) SendInterested() error {
 	_, err := c.Connection.Write((&communication.Message{ID: communication.INTERESTED}).Serialize())
 	if err != nil {
@@ -61,6 +61,8 @@ func (c *Client) SendInterested() error {
 	}
 	return err
 }
+
+// Sends NOTINTERESTED message
 func (c *Client) SendNotInterested() error {
 	_, err := c.Connection.Write((&communication.Message{ID: communication.NOTINTERESTED}).Serialize())
 	if err != nil {
@@ -68,18 +70,26 @@ func (c *Client) SendNotInterested() error {
 	}
 	return err
 }
+
+// Sends HAVE message
 func (c *Client) SendHave(index int) error {
 	msg := communication.BuildHaveMessage(index)
 	_, err := c.Connection.Write(msg.Serialize())
 	return err
 }
+
+// Sends REQUEST message
 func (c *Client) SendRequest(index int, begin int, length int) error {
+	fmt.Println("Index", index)
+	fmt.Println("Begin", begin)
+	fmt.Println("Length", length)
 	msg := communication.BuildRequestMessage(index, begin, length)
 	log.Println("Request message", msg)
 	_, err := c.Connection.Write(msg.Serialize())
 	return err
 }
 
+// Receives BITFIELD message
 func RecvBitfield(conn net.Conn) (communication.Bitfield, error) {
 	// _ = conn.SetDeadline(time.Now().Add(5 * time.Second))
 	// defer conn.SetDeadline(time.Time{}) // Disable the deadline
@@ -100,6 +110,7 @@ func RecvBitfield(conn net.Conn) (communication.Bitfield, error) {
 	return msg.Payload, nil
 }
 
+// Starts new TCP connection with peer, sends handshake and returns a Client object
 func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, peers []*Client, errChan chan error) (*Client, error) {
 	fmt.Println("Starting connection with peer...")
 	fmt.Printf("Address: %s\n", peer.IP.String()+":"+strconv.Itoa(int(peer.Port)))
@@ -135,7 +146,8 @@ func StartConnectionWithPeer(peer peer.Peer, infoHash [20]byte, peerId string, p
 
 }
 
-func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResult, error) {
+// Downloads piece from c peer
+func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*PieceResult, error) {
 	log.Printf("Starting %v piece download...", task.Index)
 
 	pp := pieceProgress{
@@ -157,13 +169,13 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 		if !c.Choked {
 			for pp.pendingBlocks < MaxBlocks && pp.requested < task.length {
 				blockSize := MaxBlockSize
+
 				// Last block might be shorter than the typical block
-				fmt.Println(task.length)
 				if task.length-pp.requested < blockSize {
 					blockSize = task.length - pp.requested
 				}
 
-				log.Printf("Starting %v request sent...", task.Index)
+				log.Printf("Starting %v, %v request sent...", task.Index, pp.requested)
 				err := c.SendRequest(task.Index, pp.requested, blockSize)
 				log.Println("Request sent")
 				if err != nil {
@@ -221,12 +233,13 @@ func DownloadPiece(c *Client, task *PieceTask, cs *ConnectionsState) (*pieceResu
 		}
 	}
 
-	return &pieceResult{index: task.Index, piece: pp.buf}, nil
+	return &PieceResult{Index: task.Index, Piece: pp.buf}, nil
 }
 
-func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks []*PieceTask, responses chan *pieceResult,
+// Sends handshake, receives bitfield from peer and manages pieces downloads
+func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks []*PieceTask, responses chan *PieceResult,
 	tc trackerpb.TrackerClient, IP string, port string, peers []*Client, cs *ConnectionsState,
-	errChan chan error) {
+	errChan chan error, dhtNode *dht.DHT) {
 	fmt.Println("Starting peer download...")
 
 	// Dial throw port and ip from peer
@@ -269,22 +282,28 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 		Left:     uint64(dp.left),
 	}
 	ctx := context.Background()
+	var done chan struct{}
+	var doneKeepAliveToDHT chan struct{}
 
-	tRes, tResErr := tc.Announce(ctx, &announce)
+	if tc != nil {
+		tRes, tResErr := tc.Announce(ctx, &announce)
+		done = make(chan struct{})
 
-	if tResErr != nil {
-		errChan <- err
-		log.Printf("Error in tracker's Announce response: %v\n", tResErr)
-		return
+		if tResErr != nil {
+			errChan <- err
+			log.Printf("Error in tracker's Announce response: %v\n", tResErr)
+			return
+		}
+		interval := tRes.GetInterval()
+		fmt.Println("Interval from announce response:", interval)
+		go t.KeepAliveToTracker(interval, IP, p, &left, dp, ctx, tc, done)
 	}
-	interval := tRes.GetInterval()
-	fmt.Println("Interval from announce response:", interval)
-	go t.KeepAliveToTracker(interval, IP, p, &left, dp, ctx, tc)
+
 	mode := "random first"
 	for len(tasks) > 0 {
 		i, psErr := SelectPiece(mode, tasks, peers)
 		task := tasks[i]
-		fmt.Println(task)
+		fmt.Println("Task>>>>", task)
 		tasks = remove(tasks, i)
 		if psErr != nil {
 			errChan <- err
@@ -294,6 +313,7 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 
 		// Ask for piece
 		if !client.Bitfield.HasPiece(task.Index) {
+			log.Println("Peer does not have piece")
 			tasks = append(tasks, task)
 			continue
 		}
@@ -306,6 +326,8 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 
 		if err != nil {
 			errChan <- err
+			log.Println("Error downloading piece")
+
 			tasks = append(tasks, task)
 			continue
 		}
@@ -320,6 +342,23 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 		}
 		log.Println("Piece checked")
 		if mode == "random first" {
+			//AnnouncePeer to DHT
+
+			if dhtNode != nil {
+				dhtNode.AnnouncePeer(string(t.InfoHash[:]), p)
+				go func(doneKeepAliveToDHT chan struct{}) {
+					for {
+						select {
+						case <-time.After(time.Second * 100):
+							if _, ok := <-doneKeepAliveToDHT; ok {
+								dhtNode.AnnouncePeer(string(t.InfoHash[:]), p)
+							}
+						case <-doneKeepAliveToDHT:
+							return
+						}
+					}
+				}(doneKeepAliveToDHT)
+			}
 			mode = "rarest first"
 		}
 		dp.bitfield.SetPiece(task.Index)
@@ -328,51 +367,59 @@ func (t *Torrent) StartPeerDownload(dp *downloadProgress, peer peer.Peer, tasks 
 		dp.requested -= task.length
 		left -= uint64(task.length)
 		_ = client.SendHave(task.Index)
+		if tc != nil {
+			log.Println("Sending announce to tracker...")
+			announce := trackerpb.AnnounceQuery{
+				InfoHash:   t.InfoHash[:],
+				PeerID:     t.PeerId,
+				IP:         IP,
+				Port:       int32(p),
+				Event:      "request",
+				Left:       left,
+				Request:    false,
+				Downloaded: uint64(dp.downloaded),
+			}
+			log.Println("Announcing to tracker...")
+			_, tResErr := tc.Announce(ctx, &announce)
+			if tResErr != nil {
+				errChan <- tResErr
+			}
+		}
 
-		announce := trackerpb.AnnounceQuery{
-			InfoHash:   t.InfoHash[:],
-			PeerID:     t.PeerId,
-			IP:         IP,
-			Port:       int32(p),
-			Event:      "request",
-			Left:       left,
-			Request:    false,
-			Downloaded: uint64(dp.downloaded),
-		}
-		log.Println("Announcing to tracker...")
-		_, tResErr = tc.Announce(ctx, &announce)
-		if tResErr != nil {
-			errChan <- tResErr
-		}
 		responses <- piece
-		fmt.Println(piece)
 	}
-
+	log.Println("Closing Keep Alive channels")
+	close(done)
+	close(doneKeepAliveToDHT)
 }
-func (t *Torrent) KeepAliveToTracker(interval uint32, IP string, port int, left *uint64, dp *downloadProgress, ctx context.Context, tc trackerpb.TrackerClient) {
 
+// Sends Announce to tracker to keep it up to date
+func (t *Torrent) KeepAliveToTracker(interval uint32, IP string, port int, left *uint64, dp *downloadProgress, ctx context.Context, tc trackerpb.TrackerClient, done chan struct{}) {
 	for {
-		announce := trackerpb.AnnounceQuery{
-			InfoHash:   t.InfoHash[:],
-			PeerID:     t.PeerId,
-			IP:         IP,
-			Port:       int32(port),
-			Event:      "request",
-			Left:       *left,
-			Request:    false,
-			Downloaded: uint64(dp.downloaded),
-		}
-
-		_, tResErr := tc.Announce(ctx, &announce)
-
-		if tResErr != nil {
-			log.Printf("Error in tracker keepalive: %v\n", tResErr)
+		//PREGUNTAR A ANA
+		select {
+		case <-done:
 			return
+		case <-time.After(time.Second * 10):
+			announce := trackerpb.AnnounceQuery{
+				InfoHash:   t.InfoHash[:],
+				PeerID:     t.PeerId,
+				IP:         IP,
+				Port:       int32(port),
+				Event:      "request",
+				Left:       *left,
+				Request:    false,
+				Downloaded: uint64(dp.downloaded),
+			}
+
+			_, tResErr := tc.Announce(ctx, &announce)
+
+			if tResErr != nil {
+				log.Printf("Error in tracker keepalive: %v\n", tResErr)
+				return
+			}
 		}
-
-		time.Sleep(time.Duration(interval) * 1000000000)
 	}
-
 }
 
 func remove(slice []*PieceTask, s int) []*PieceTask {

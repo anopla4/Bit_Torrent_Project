@@ -23,10 +23,10 @@ func RandomFirst(pieces []*PieceTask) int {
 func RarestFirst(pieces []*PieceTask, peers []*Client) int {
 	p := 0
 	min := len(peers) + 1
-	for _, piece := range pieces {
+	for i, piece := range pieces {
 		pc := NumberOfPeers(peers, piece.Index)
 		if pc < min {
-			p = piece.Index
+			p = i
 			min = pc
 		}
 	}
