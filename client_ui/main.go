@@ -1,6 +1,9 @@
 package main
 
 import (
+	"Bit_Torrent_Project/Client/torrent_peer"
+	"Bit_Torrent_Project/Client/utils"
+	dht "Bit_Torrent_Project/dht/Kademlia"
 	"fmt"
 	"log"
 	"net"
@@ -8,7 +11,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/thanhpk/randstr"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -122,12 +128,12 @@ func main() {
 	setPortButton := widget.NewButtonWithIcon("Set Port", theme.ConfirmIcon(), func() {
 		port := portEntry.Text
 		p2, err := strconv.Atoi(port)
-		if err!=nil{
+		if err != nil {
 			log.Println("Not reconognize that port")
 			dialog.ShowInformation("Set Port", "Failed", win)
 			return
 		}
-		if p2 < 1024 || p2 > 65535{
+		if p2 < 1024 || p2 > 65535 {
 			log.Println("Port out of range")
 			dialog.ShowInformation("Set Port", "Failed valid range(1024-65535)", win)
 			return
@@ -162,27 +168,9 @@ func main() {
 			portLabel,
 			portEntry,
 			portButtons),
-		// container.New(
-		// 	layout.NewBorderLayout(
-		// 		nil,
-		// 		nil,
-		// 		nil,
-		// 		downloadsButtons,
-		// 	),
-		// 	downloadsButtons),
 	)
 
-	//portLabel := widget.NewLabel("Client Port:")
-	//portEntry := widget.NewEntry()
-
 	//tab ONE DOWNLOADED
-
-	//var (
-	//	dest   string
-	//	source string
-	//)
-	//dest = ""
-	//source = ""
 
 	folderLabel := widget.NewLabel("Output folder:")
 	folderEntry := widget.NewEntry()
@@ -252,7 +240,7 @@ func main() {
 	bar := widget.NewProgressBar()
 	bar.Resize(fyne.NewSize(400, bar.MinSize().Height))
 	bar.Hide()
-	
+
 	downloadButton := widget.NewButton("Start", func() {
 		dest := folderEntry.Text
 		source := torrentEntry.Text
@@ -306,7 +294,7 @@ func main() {
 				downloadsButtons,
 			),
 			downloadsButtons),
-		container.NewGridWithRows(4,bar),
+		container.NewGridWithRows(4, bar),
 	)
 
 	//Tab Two PUBLISH
@@ -366,7 +354,6 @@ func main() {
 	win.SetContent(
 		container.New(
 			layout.NewPaddedLayout(),
-			//generalOptions,
 			tabs,
 		),
 	)
@@ -382,4 +369,84 @@ func main() {
 	win.Resize(fyne.NewSize(800, 600))
 
 	win.ShowAndRun()
+
+	var wg = sync.WaitGroup{}
+
+	const bootstrapPort = "6888"
+	peerId := ""
+	info := utils.LoadInfo("../client/info.json")
+	if info.PeerId != "" {
+		peerId = info.PeerId
+	} else {
+		peerId = randstr.Hex(10)
+	}
+	errChan := make(chan error)
+	// Starting server
+	csServer := &torrent_peer.ConnectionsState{LastUpload: map[string]time.Time{}, NumberOfBlocksInLast30Seconds: map[string]int{}}
+	wg.Add(1)
+	go func() {
+		utils.StartClientUploader(info, peerId, csServer, errChan)
+		wg.Done()
+	}()
+
+	//Publish("../b.torrent", peerId, "192.168.169.14")
+	// _ = torrent_file.BuildTorrentFile("../VID-20211202-WA0190.mp4", "../b.torrent", "192.168.169.32:8167")
+
+	var torrentPath, downloadTo string
+	torrentPath = "../c.torrent"
+	downloadTo = "../"
+	IP := "192.168.169.14"
+	bootstrapADDR := IP + ":" + bootstrapPort
+
+	// Starting DHT
+	options := &dht.Options{
+		ID:                   []byte(peerId),
+		IP:                   IP,
+		Port:                 6881,
+		ExpirationTime:       time.Hour,
+		RepublishTime:        time.Minute * 50,
+		TimeToDie:            time.Second * 6,
+		TimeToRefreshBuckets: time.Minute * 15,
+	}
+	dhtNode := dht.NewDHT(options)
+	exitChan := make(chan string)
+
+	go dhtNode.RunServer(exitChan)
+
+	time.Sleep(time.Second * 2)
+
+	dhtNode.JoinNetwork(bootstrapADDR)
+
+	// Starting downloader
+	var downloadWord string
+	_, err := fmt.Scanln(&downloadWord)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if downloadWord == "d" {
+		fmt.Println("Waiting for paths to download...")
+		wg.Add(1)
+		go func() {
+			pieces, infoHash, bitfield, err := utils.Download(torrentPath, downloadTo, IP, peerId, dhtNode)
+			if err != nil {
+				log.Println(err)
+				return
+			}
+			utils.SaveToInfo(torrentPath, pieces, infoHash, []byte(bitfield))
+			wg.Done()
+		}()
+	}
+
+	go func() {
+		for {
+			if _, ok := <-exitChan; ok {
+				go dhtNode.RunServer(exitChan)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	defer close(exitChan)
+
 }
