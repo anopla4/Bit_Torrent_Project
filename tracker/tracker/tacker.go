@@ -15,16 +15,9 @@ import (
 	"fmt"
 
 	//_ "log"
-	"math/rand"
 	"net"
 	"sync"
 	"time"
-
-	//"google.golang.org/grpc"
-	//"google.golang.org/grpc/peer"
-	//_ "google.golang.org/grpc" // testing
-
-	ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
 
@@ -102,8 +95,8 @@ type TrackerServer struct {
 	Torrents TorrentsPool `json:"torrents_pool"`
 
 	//Tracker to Tracker Comunication Block
-	ttp.UnimplementedTrackerComunicationServer
-	RedKey         string
+	//ttp.UnimplementedTrackerComunicationServer
+	RedKey         []byte
 	BackupTrackers TrackersPool `json:"bk_trackers"`
 }
 
@@ -120,7 +113,7 @@ func (tk *TrackerServer) AddBkTracker(ip net.IP, port int) error {
 	return nil
 }
 
-func RePublishRequestManager(listAddr []string, key, infoHash, peerId, ip string, port int32) {
+func RePublishRequestManager(listAddr []string, key []byte, infoHash, peerId, ip string, port int32) {
 	for _, addr := range listAddr {
 		if addr != "" {
 			fmt.Printf("Make a RePublis request to %s \n", addr)
@@ -130,7 +123,7 @@ func RePublishRequestManager(listAddr []string, key, infoHash, peerId, ip string
 	log.Println("Finish RePublish")
 }
 
-func makeRePublishRequest(addr, key, infoHash, peerID, IP string, port int32) {
+func makeRePublishRequest(addr string, key []byte, infoHash, peerID, IP string, port int32) {
 	cert, _ := tls.LoadX509KeyPair("cert/cert.pem", "cert/key.pem")
 	caCert, _ := ioutil.ReadFile("cert/cert.pem")
 
@@ -144,9 +137,9 @@ func makeRePublishRequest(addr, key, infoHash, peerID, IP string, port int32) {
 		return
 	}
 	defer conn.Close()
-	client := ttp.NewTrackerComunicationClient(conn)
+	client := pb.NewTrackerClient(conn)
 
-	m := ttp.RePublishQuery{
+	m := pb.RePublishQuery{
 		InfoHash: []byte(infoHash),
 		PeerID:   peerID,
 		IP:       IP,
@@ -166,9 +159,6 @@ func makeRePublishRequest(addr, key, infoHash, peerID, IP string, port int32) {
 
 //Publish maneja el servicio Publish request del tracker recibiendo un PublishQuery y devolviendo un PublishResponse
 func (tk *TrackerServer) Publish(ctx context.Context, pq *pb.PublishQuery) (*pb.PublishResponse, error) {
-	//if p, ok:= peer.FromContext(ctx); ok{
-	//	fmt.Println(p)
-	//}
 	log.Println("Incoming publish... ")
 
 	ih := pq.GetInfoHash()
@@ -184,16 +174,15 @@ func (tk *TrackerServer) Publish(ctx context.Context, pq *pb.PublishQuery) (*pb.
 		log.Println(err.Error())
 		return nil, err
 	}
-	fmt.Println(pq.GetIP())
 	ip := net.ParseIP(pq.GetIP())
 	if ip == nil {
-		err := fmt.Errorf("Publish error--> Unreacheable field: IP")
+		err := fmt.Errorf("ublish Error---> Unreacheable field: IP")
 		log.Println(err.Error())
 		return nil, err
 	}
 	port := pq.GetPort()
 	if port == 0 {
-		err := fmt.Errorf("Publish error--> Unreacheable field: Port")
+		err := fmt.Errorf("Publish Error---> Unreacheable field: port")
 		log.Println(err.Error())
 		return nil, err
 	}
@@ -250,11 +239,6 @@ func (tk *TrackerServer) publishTorrent(infoHash, peerID string, port int, ip ne
 
 //Announce maneja el servicio Announce request del tracker recibiendo un AnnounceQuery y devolviendo un AnnounceResponse
 func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (*pb.AnnounceResponse, error) {
-	//if p, ok := peer.FromContext(ctx); ok {
-	//	fmt.Println(p)
-	//}
-	log.Println("Incoming Announce... ")
-
 	pa, err := announceQueryCheck(annq)
 	var ar pb.AnnounceResponse
 	if err != nil {
@@ -301,7 +285,7 @@ func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (
 		}
 		ar.Interval = tk.Interval
 		ar.Complete, ar.Incomplete = ttk.Peers.torrentStats()
-		log.Printf("Complete annunce---> %s for peer: %s", infoHash, pa.PeerID)
+		log.Printf("Annunce OK---> %s for peer: %s", infoHash, pa.PeerID)
 		return &ar, nil
 	}
 	err = fmt.Errorf("Announce Error---> Dont match the infohash")
@@ -328,7 +312,7 @@ func (pp PeersPool) torrentStats() (complete, incomplete int64) {
 	return
 }
 
-//Devuelve una cantidad pseudorandom de peers en base al numwant
+//Devuelve una cantidad de peers en base al numwant
 func (pp PeersPool) getRandomPeers(excludeID string, numwant int) (map[string]string, error) {
 	maxPeers := len(pp)
 	if _, ok := pp[excludeID]; ok {
@@ -337,41 +321,35 @@ func (pp PeersPool) getRandomPeers(excludeID string, numwant int) (map[string]st
 	if numwant > maxPeers {
 		numwant = maxPeers
 	}
-	dif := numwant - maxPeers
-	excludes := make(intset, dif)
-	if dif > 1 {
-		last := rand.Intn(numwant - 1)
-		excludes[last] = 0
-		for i := 1; i < dif; i++ {
-			rand.Seed(time.Now().UnixNano())
-			r := rand.Intn(numwant - 1)
-			if _, found := excludes[r]; !found {
-				excludes[r] = 0
-			}
-		}
-	}
-	i := 0
 	count := 0
 	peers := make(map[string]string, numwant)
 	for k, v := range pp {
 		if k != excludeID {
-			if _, found := excludes[i]; found {
-				delete(excludes, i)
-			} else {
-				switch v.State {
-				case "stopped":
-				case "started":
-				default:
-					count++
-					peers[v.ID] = v.Addr.String()
-				}
+			switch v.State {
+			case "stopped":
+			case "started":
+			default:
+				count++
+				peers[v.ID] = v.Addr.String()
 			}
 		}
 		if count == numwant-1 {
 			break
 		}
-		i++
 	}
+	for k, v := range pp {
+		if count == numwant-1 {
+			break
+		}
+		if k != excludeID {
+			switch v.State {
+			case "started":
+				count++
+				peers[v.ID] = v.Addr.String()
+			}
+		}
+	}
+
 	return peers, nil
 }
 
@@ -474,7 +452,7 @@ func ParseScraperRequest(sc *pb.ScraperQuery) ([]string, error) {
 //Tracker to Tracker protocol
 
 //RePublish es el metodo para menejar la solicitud de RePublish entre los trackers
-func (tk *TrackerServer) RePublish(ctx context.Context, rpq *ttp.RePublishQuery) (*ttp.RePublishResponse, error) {
+func (tk *TrackerServer) RePublish(ctx context.Context, rpq *pb.RePublishQuery) (*pb.RePublishResponse, error) {
 	ih := rpq.GetInfoHash()
 	if ih == nil || len(ih) != 20 {
 		err := fmt.Errorf("RePublish Error---> Invalid InfoHash")
@@ -503,10 +481,10 @@ func (tk *TrackerServer) RePublish(ctx context.Context, rpq *ttp.RePublishQuery)
 	inKey := rpq.GetRedKey()
 	tk.Lock()
 	defer tk.Unlock()
-	if inKey != tk.RedKey {
+	if string(inKey[:]) != string(tk.RedKey[:]) {
 		err := fmt.Errorf("RePublish Error---> The <redKey> is incorrect")
 		log.Println(err.Error())
-		return &ttp.RePublishResponse{
+		return &pb.RePublishResponse{
 			Status: UNKNOWNREDKEY,
 		}, err
 	}
@@ -514,20 +492,22 @@ func (tk *TrackerServer) RePublish(ctx context.Context, rpq *ttp.RePublishQuery)
 	if status == OK {
 		log.Printf("RePublish torrent:%s from source peerId:%s\n", infoHash, peerID)
 	}
-	return &ttp.RePublishResponse{
+	return &pb.RePublishResponse{
 		Status: status,
 	}, nil
 }
 
 //KnowMe es el metodo para manejar la solicitud KnowMeRequest entre los trackers
-func (tk *TrackerServer) KnowMe(ctx context.Context, kr *ttp.KnowMeRequest) (*ttp.KnowMeResponse, error) {
+func (tk *TrackerServer) KnowMe(ctx context.Context, kr *pb.KnowMeRequest) (*pb.KnowMeResponse, error) {
 	inKey := kr.GetRedKey()
+
 	port := kr.GetPort()
+	log.Println(port)
 	ip := net.ParseIP(kr.GetIP())
 	if ip == nil {
 		err := fmt.Errorf("KnowMe Error---> Unreachable field: IP")
 		log.Println(err.Error())
-		return &ttp.KnowMeResponse{
+		return &pb.KnowMeResponse{
 			Status: FAILEDIP,
 
 			RepeatInterval: INTERVALTKTKTIME,
@@ -536,32 +516,33 @@ func (tk *TrackerServer) KnowMe(ctx context.Context, kr *ttp.KnowMeRequest) (*tt
 	if port == 0 {
 		err := fmt.Errorf("KnowMe Error---> Unreachable field: port")
 		log.Println(err.Error())
-		return &ttp.KnowMeResponse{
+		return &pb.KnowMeResponse{
 			Status:         FAILEDPORT,
 			RepeatInterval: INTERVALTKTKTIME,
 		}, err
 	}
 	tk.Lock()
-	if inKey != tk.RedKey {
+	if string(inKey[:]) != string(tk.RedKey[:]) {
 		err := fmt.Errorf("KnowMe Error---> The <redKey> is incorrect")
 		log.Println(err.Error())
-		return &ttp.KnowMeResponse{
+		return &pb.KnowMeResponse{
 			Status:         UNKNOWNREDKEY,
 			RepeatInterval: INTERVALTKTKTIME,
 		}, err
 	}
-	hotsport := net.JoinHostPort(ip.String(), string(port))
+	hotsport := net.JoinHostPort(ip.String(), fmt.Sprint(port))
+	log.Println(hotsport)
 	bktks := tk.BackupTrackers
 	if _, found := bktks[hotsport]; found {
-		return &ttp.KnowMeResponse{
+		return &pb.KnowMeResponse{
 			Status:         FAILED,
 			RepeatInterval: INTERVALTKTKTIME,
 		}, nil
 	}
 	bktks[hotsport] = &BkTracker{IP: ip, Port: int(port)}
 	tk.Unlock()
-	log.Println("KnowMe complete, backoup included")
-	return &ttp.KnowMeResponse{
+	log.Println("KnowMe complete, backup included")
+	return &pb.KnowMeResponse{
 		Status:         OK,
 		RepeatInterval: INTERVALTKTKTIME,
 	}, nil
