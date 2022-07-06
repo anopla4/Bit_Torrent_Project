@@ -82,6 +82,6 @@ service Tracker {
 	rpc Publish (PublishQuery) returns (PublishResponse){}
     rpc Announce (AnnounceQuery) returns (AnnounceResponse){}
 	rpc Scrape(ScraperQuery) returns (ScraperResponse){}
-<<<<<<< HEAD
 	rpc RePublish (RePublishQuery) returns (RePublishResponse){}
 	rpc KnowMe(KnowMeRequest) returns (KnowMeResponse){}
+}
