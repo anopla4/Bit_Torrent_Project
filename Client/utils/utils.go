@@ -4,9 +4,9 @@ import (
 	"Bit_Torrent_Project/Client/client/communication"
 	"Bit_Torrent_Project/Client/client/torrent_file"
 	"Bit_Torrent_Project/Client/client/tracker_communication"
+	dht "Bit_Torrent_Project/Client/dht/Kademlia"
 	"Bit_Torrent_Project/Client/torrent_peer"
 	"Bit_Torrent_Project/Client/torrent_peer/uploader_client"
-	dht "Bit_Torrent_Project/dht/Kademlia"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
@@ -27,17 +27,14 @@ func Download(torrentPath string, downloadTo string, IP string, peerId string, d
 	}
 	pieces, infoHash, bitfield, err := torrentFile.DownloadTo(downloadTo, csClient, IP, peerId, dhtNode)
 
-	if err != nil {
-		log.Printf("Error while downloading torrent: %v\n", err)
-	}
-	return pieces, infoHash, bitfield, nil
+	if err != npeerIdes, infoHash, bitfield, nil
 }
 
-func StartClientUploader(info *uploader_client.ClientInfo, peerID string, cs *torrent_peer.ConnectionsState, errChan chan error) {
+func StartClientUploader(info *uploader_client.ClientInfo, peerID string, IP string, cs *torrent_peer.ConnectionsState, errChan chan error) {
 	fmt.Println("Hello World")
 
 	// Listen to new connections
-	err := uploader_client.ServerTCP(info, peerID, cs, errChan)
+	err := uploader_client.ServerTCP(info, peerID, cs, IP, errChan)
 
 	if err != nil {
 		log.Fatalf("Error while starting server: %v\n", err)

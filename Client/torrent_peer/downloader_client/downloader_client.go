@@ -1,7 +1,7 @@
 package downloader_client
 
 import (
-	"Bit_Torrent_Project/client/client/communication"
+	"Bit_Torrent_Project/Client/client/communication"
 	"crypto/tls"
 	"errors"
 	"fmt"

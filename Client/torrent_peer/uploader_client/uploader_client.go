@@ -1,9 +1,9 @@
 package uploader_client
 
 import (
-	"Bit_Torrent_Project/client/client/communication"
-	"Bit_Torrent_Project/client/torrent_peer"
-	"Bit_Torrent_Project/client/torrent_peer/downloader_client"
+	"Bit_Torrent_Project/Client/client/communication"
+	"Bit_Torrent_Project/Client/torrent_peer"
+	"Bit_Torrent_Project/Client/torrent_peer/downloader_client"
 	"bufio"
 	"crypto/tls"
 	"crypto/x509"
@@ -40,7 +40,7 @@ type Server struct {
 }
 
 // Starts client server-side
-func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsState, errChan chan error) error {
+func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsState, IP string, errChan chan error) error {
 	// Setting SSL certificate
 	cert, err := tls.LoadX509KeyPair("./SSL/server.pem", "./SSL/server.key")
 	if err != nil {
@@ -65,7 +65,7 @@ func ServerTCP(info *ClientInfo, peerId string, cs *torrent_peer.ConnectionsStat
 	}
 
 	// Start listening for new connections
-	l, listenErr := tls.Listen("tcp", "192.168.169.14"+":"+port, tlsCfg)
+	l, listenErr := tls.Listen("tcp", IP+":"+port, tlsCfg)
 	if listenErr != nil {
 		fmt.Println(listenErr)
 		return listenErr

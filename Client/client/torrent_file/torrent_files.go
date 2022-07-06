@@ -1,10 +1,11 @@
 package torrent_file
 
 import (
-	"Bit_Torrent_Project/client/client/peer"
-	"Bit_Torrent_Project/client/client/tracker_communication"
-	"Bit_Torrent_Project/client/torrent_peer"
-	dht "Bit_Torrent_Project/dht/Kademlia"
+	"Bit_Torrent_Project/Client/client/peer"
+	"Bit_Torrent_Project/Client/client/tracker_communication"
+	dht "Bit_Torrent_Project/Client/dht/Kademlia"
+	"Bit_Torrent_Project/Client/torrent_peer"
+	"Bit_Torrent_Project/Client/trackerpb"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -13,8 +14,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"trackerpb"
 
+	//"Bit_Torrent_Project/Client/client/peer"
+	//"Bit_Torrent_Project/Client/client/tracker_communication"
+	//"Bit_Torrent_Project/Client/torrent_peer"
+	//dht "Bit_Torrent_Project/Client/dht/Kademlia"
+	//"bytes"
+	//"crypto/sha1"
+	//"fmt"
+	//"log"
+	//"net"
+	//"os"
+	//"strconv"
+	//"strings"
+	//"trackerpb"
+	//
 	"github.com/jackpal/bencode-go"
 	"github.com/thanhpk/randstr"
 )
@@ -235,7 +249,7 @@ func (tf *TorrentFile) DownloadTo(path string, cs *torrent_peer.ConnectionsState
 
 	p, _ := strconv.Atoi(port)
 
-	pieces, infoHash, bitfield, res, err := torrent.DownloadFile(tc, IP, cs, port, dhtNode)
+	pieces, infoHash, bitfield, res, err := torrent.DownloadFile(tc, IP, cs, port, nil)//dhtNode)
 	if err != nil {
 		return nil, [20]byte{}, "", err
 	}

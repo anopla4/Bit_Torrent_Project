@@ -1,6 +1,7 @@
 package tracker_communication
 
 import (
+	"Bit_Torrent_Project/Client/trackerpb"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -9,10 +10,20 @@ import (
 	"io/ioutil"
 	"log"
 	"strconv"
-	"trackerpb"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	//"Bit_Torrent_Project/Client/trackerpb"
+	//"context"
+	//"crypto/tls"
+	//"crypto/x509"
+	//"errors"
+	//"fmt"
+	//"io/ioutil"
+	//"log"
+	//"strconv"
+	//
+	//
 )
 
 const PORT = "50051"

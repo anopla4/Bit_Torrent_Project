@@ -1,17 +1,17 @@
 package torrent_peer
 
 import (
-	"Bit_Torrent_Project/client/client/communication"
-	"Bit_Torrent_Project/client/client/peer"
-	"Bit_Torrent_Project/client/torrent_peer/downloader_client"
-	dht "Bit_Torrent_Project/dht/Kademlia"
+	"Bit_Torrent_Project/Client/client/communication"
+	"Bit_Torrent_Project/Client/client/peer"
+	"Bit_Torrent_Project/Client/torrent_peer/downloader_client"
+	dht "Bit_Torrent_Project/Client/dht/Kademlia"
 	"context"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"time"
-	"trackerpb"
+	"Bit_Torrent_Project/Client/trackerpb"
 )
 
 var MaxBlocks = 5

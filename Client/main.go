@@ -1,12 +1,12 @@
 package main
 
 import (
-	"Bit_Torrent_Project/client/client/communication"
-	"Bit_Torrent_Project/client/client/torrent_file"
-	"Bit_Torrent_Project/client/client/tracker_communication"
-	"Bit_Torrent_Project/client/torrent_peer"
-	"Bit_Torrent_Project/client/torrent_peer/uploader_client"
-	dht "Bit_Torrent_Project/dht/Kademlia"
+	"Bit_Torrent_Project/Client/client/communication"
+	"Bit_Torrent_Project/Client/client/torrent_file"
+	"Bit_Torrent_Project/Client/client/tracker_communication"
+	dht "Bit_Torrent_Project/Client/dht/Kademlia"
+	"Bit_Torrent_Project/Client/torrent_peer"
+	"Bit_Torrent_Project/Client/torrent_peer/uploader_client"
 	"crypto/sha1"
 	"encoding/json"
 	"fmt"
@@ -47,27 +47,27 @@ func main() {
 	torrentPath = "../c.torrent"
 	downloadTo = "../"
 	IP := "192.168.169.14"
-	bootstrapADDR := IP + ":" + bootstrapPort
+	//bootstrapADDR := IP + ":" + bootstrapPort
 
-	// Starting DHT
-	options := &dht.Options{
-		ID:                   []byte(peerId),
-		IP:                   IP,
-		Port:                 6881,
-		ExpirationTime:       time.Hour,
-		RepublishTime:        time.Minute * 50,
-		TimeToDie:            time.Second * 6,
-		TimeToRefreshBuckets: time.Minute * 15,
-	}
-	dhtNode := dht.NewDHT(options)
-	exitChan := make(chan string)
-
-	go dhtNode.RunServer(exitChan)
-
-	time.Sleep(time.Second * 2)
-
-	dhtNode.JoinNetwork(bootstrapADDR)
-
+	//// Starting DHT
+	//options := &dht.Options{
+	//	ID:                   []byte(peerId),
+	//	IP:                   IP,
+	//	Port:                 6881,
+	//	ExpirationTime:       time.Hour,
+	//	RepublishTime:        time.Minute * 50,
+	//	TimeToDie:            time.Second * 6,
+	//	TimeToRefreshBuckets: time.Minute * 15,
+	//}
+	//dhtNode := dht.NewDHT(options)
+	//exitChan := make(chan string)
+//
+	//go dhtNode.RunServer(exitChan)
+//
+	//time.Sleep(time.Second * 2)
+//
+	//dhtNode.JoinNetwork(bootstrapADDR)
+//
 	// Starting downloader
 	var download string
 	_, err := fmt.Scanln(&download)
@@ -78,7 +78,7 @@ func main() {
 		fmt.Println("Waiting for paths to download...")
 		wg.Add(1)
 		go func() {
-			pieces, infoHash, bitfield, err := Download(torrentPath, downloadTo, IP, peerId, dhtNode)
+			pieces, infoHash, bitfield, err := Download(torrentPath, downloadTo, IP, peerId, nil)//dhtNode)
 			if err != nil {
 				log.Println(err)
 				return
@@ -88,17 +88,17 @@ func main() {
 		}()
 	}
 
-	go func() {
-		for {
-			if _, ok := <-exitChan; ok {
-				go dhtNode.RunServer(exitChan)
-			}
-		}
-	}()
+	//go func() {
+	//	for {
+	//		if _, ok := <-exitChan; ok {
+	//			go dhtNode.RunServer(exitChan)
+	//		}
+	//	}
+	//}()
 
 	wg.Wait()
 
-	defer close(exitChan)
+	//defer close(exitChan)
 }
 
 func Download(torrentPath string, downloadTo string, IP string, peerId string, dhtNode *dht.DHT) ([]*torrent_peer.PieceResult, [20]byte, string, error) {
@@ -108,7 +108,7 @@ func Download(torrentPath string, downloadTo string, IP string, peerId string, d
 	if err != nil {
 		log.Printf("Error while parsing torrent: %v\n", err)
 	}
-	pieces, infoHash, bitfield, err := torrentFile.DownloadTo(downloadTo, csClient, IP, peerId, dhtNode)
+	pieces, infoHash, bitfield, err := torrentFile.DownloadTo(downloadTo, csClient, IP, peerId, nil)//dhtNode)
 
 	if err != nil {
 		log.Printf("Error while downloading torrent: %v\n", err)

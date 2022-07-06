@@ -1,9 +1,14 @@
 package torrent_peer
 
 import (
-	"Bit_Torrent_Project/client/client/communication"
-	"Bit_Torrent_Project/client/client/peer"
-	dht "Bit_Torrent_Project/dht/Kademlia"
+	"Bit_Torrent_Project/Client/client/communication"
+	"Bit_Torrent_Project/Client/client/peer"
+	dht "Bit_Torrent_Project/Client/dht/Kademlia"
+
+	//dht "Bit_Torrent_Project/dht/Kademlia"
+
+	//dht "Bit_Torrent_Project/dht/Kademlia"
+	"Bit_Torrent_Project/Client/trackerpb"
 	"bytes"
 	"crypto/sha1"
 	"fmt"
@@ -12,7 +17,10 @@ import (
 	"sort"
 	"sync"
 	"time"
-	"trackerpb"
+
+	//"trackerpb"
+
+	//"trackerpb"
 
 	"github.com/cheggaaa/pb"
 )
@@ -102,7 +110,7 @@ func (t *Torrent) DownloadFile(tc trackerpb.TrackerClient, IP string, cs *Connec
 		fmt.Printf("Peer: %v\n", peer_)
 		wg.Add(1)
 		go func(p peer.Peer) {
-			t.StartPeerDownload(dp, p, tasks, responses, tc, IP, port, peers, cs, errChan)
+			t.StartPeerDownload(dp, p, tasks, responses, tc, IP, port, peers, cs, errChan, nil)//dhtNode)
 			log.Println("Exiting peer goroutine>>>>>")
 			wg.Done()
 		}(peer_)
