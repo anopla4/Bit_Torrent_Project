@@ -3,9 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/url"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -98,6 +101,80 @@ func main() {
 	win.SetMaster()
 	win.CenterOnScreen()
 
+	///tab INITIAL
+	ipLabel := widget.NewLabel("Client IP:")
+	ipEntry := widget.NewEntry()
+	setIPButton := widget.NewButtonWithIcon("Set IP", theme.ConfirmIcon(), func() {
+		ip := ipEntry.Text
+		//source := torrentEntry.Text
+		if net.ParseIP(ip) == nil {
+			log.Println("Not reconognize that ip")
+			dialog.ShowInformation("Set IP", "Failed", win)
+			return
+		}
+		dialog.ShowInformation("Set IP", "Accept", win)
+		ipEntry.Disable()
+		// Pass to client
+	})
+
+	portLabel := widget.NewLabel("Client Port:")
+	portEntry := widget.NewEntry()
+	setPortButton := widget.NewButtonWithIcon("Set Port", theme.ConfirmIcon(), func() {
+		port := portEntry.Text
+		p2, err := strconv.Atoi(port)
+		if err!=nil{
+			log.Println("Not reconognize that port")
+			dialog.ShowInformation("Set Port", "Failed", win)
+			return
+		}
+		if p2 < 1024 || p2 > 65535{
+			log.Println("Port out of range")
+			dialog.ShowInformation("Set Port", "Failed valid range(1024-65535)", win)
+			return
+		}
+		dialog.ShowInformation("Set Port", "Accept", win)
+		portEntry.Disable()
+		// Pass to client
+	})
+
+	ipButtons := container.NewHBox(setIPButton) //, chestFolderButton, currentFolderButton)
+	portButtons := container.NewHBox(setPortButton)
+	//downloadsButtons := container.NewCenter(downloadButton)
+
+	config := container.NewVBox(
+		container.New(
+			layout.NewBorderLayout(
+				nil,
+				nil,
+				ipLabel,
+				ipButtons,
+			),
+			ipLabel,
+			ipEntry,
+			ipButtons),
+		container.New(
+			layout.NewBorderLayout(
+				nil,
+				nil,
+				portLabel,
+				portButtons,
+			),
+			portLabel,
+			portEntry,
+			portButtons),
+		// container.New(
+		// 	layout.NewBorderLayout(
+		// 		nil,
+		// 		nil,
+		// 		nil,
+		// 		downloadsButtons,
+		// 	),
+		// 	downloadsButtons),
+	)
+
+	//portLabel := widget.NewLabel("Client Port:")
+	//portEntry := widget.NewEntry()
+
 	//tab ONE DOWNLOADED
 
 	//var (
@@ -172,6 +249,10 @@ func main() {
 		open.Show()
 	})
 
+	bar := widget.NewProgressBar()
+	bar.Resize(fyne.NewSize(400, bar.MinSize().Height))
+	bar.Hide()
+	
 	downloadButton := widget.NewButton("Start", func() {
 		dest := folderEntry.Text
 		source := torrentEntry.Text
@@ -181,6 +262,14 @@ func main() {
 			return
 		}
 		log.Println(source + " ---> " + dest)
+		//newProgressBar("progress", win).Show()
+		bar.Show()
+		go func() {
+			for i := 0.0; i <= 1.0; i += 0.1 {
+				time.Sleep(time.Millisecond * 500)
+				bar.SetValue(i)
+			}
+		}()
 		// Pass to client
 	})
 
@@ -217,6 +306,7 @@ func main() {
 				downloadsButtons,
 			),
 			downloadsButtons),
+		container.NewGridWithRows(4,bar),
 	)
 
 	//Tab Two PUBLISH
@@ -267,6 +357,7 @@ func main() {
 
 	tabItems := make([]*container.TabItem, 0, 2)
 
+	tabItems = append(tabItems, container.NewTabItem("Config", config))
 	tabItems = append(tabItems, container.NewTabItem("Download", download))
 	tabItems = append(tabItems, container.NewTabItem("Publish", publish))
 	tabs := container.NewAppTabs(tabItems...)
