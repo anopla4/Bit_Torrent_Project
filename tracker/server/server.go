@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/credentials"
 
 	tk "Bit_Torrent_Project/tracker/tracker"
-	ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
+	//ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
 
@@ -71,14 +71,14 @@ func loadBkTrackers() (tk.TrackersPool, error) {
 	return bktkLoads, nil
 }
 
-func newTrackerServer(key string) *tk.TrackerServer {
+func newTrackerServer(key []byte) *tk.TrackerServer {
 	return &tk.TrackerServer{Torrents: make(tk.TorrentsPool, 10),
 		RedKey:         key,
 		Interval:       30,
 		BackupTrackers: make(tk.TrackersPool, 5)}
 }
 
-func newTrackerServerFromLoad(key string) *tk.TrackerServer {
+func newTrackerServerFromLoad(key []byte) *tk.TrackerServer {
 	tstate, err := ioutil.ReadFile("data/torrents.json")
 	if err != nil {
 		log.Println("Failed to load backup info: " + err.Error())
@@ -107,15 +107,15 @@ func pritnTracker(ts tk.TrackerServer) {
 	fmt.Println(string(jts))
 }
 
-func getNewBkTrackersAddrs(source string) (list.List, error) {
+func getNewBkTrackersAddrs(source string) (*list.List, error) {
 	jsonTrackers, err := ioutil.ReadFile(source)
 	if err != nil {
-		return list.List{}, err
+		return &list.List{}, err
 	}
-	var aTk []tk.BkTracker
+	var aTk tk.TrackersPool //[]tk.BkTracker
 	err = json.Unmarshal(jsonTrackers, &aTk)
 	if err != nil {
-		return list.List{}, err
+		return &list.List{}, err
 	}
 	queue := list.New()
 	alreadyKnows, err := loadBkTrackers()
@@ -132,10 +132,10 @@ func getNewBkTrackersAddrs(source string) (list.List, error) {
 		}
 		queue.PushBack(addr)
 	}
-	return *queue, nil
+	return queue, nil
 }
 
-func trackerTrackerCommunication(parentCtx context.Context, tkQueue list.List, key, myIP string, myPort int32, ch chan<- tk.BkTracker) {
+func trackerTrackerCommunication(parentCtx context.Context, tkQueue *list.List, key []byte, myIP string, myPort int32, ch chan<- tk.BkTracker) {
 	for tkQueue.Len() > 0 {
 		e := tkQueue.Front() // First element
 		addr := fmt.Sprint(e.Value)
@@ -161,7 +161,7 @@ loop:
 	}
 }
 
-func makeKnowMeConnection(parentCtx context.Context, addr, key, myIP string, myPort int32, ch chan<- tk.BkTracker) {
+func makeKnowMeConnection(parentCtx context.Context, addr string, key []byte, myIP string, myPort int32, ch chan<- tk.BkTracker) {
 	cert, _ := tls.LoadX509KeyPair("cert/cert.pem", "cert/key.pem")
 	caCert, _ := ioutil.ReadFile("cert/cert.pem")
 
@@ -176,9 +176,9 @@ func makeKnowMeConnection(parentCtx context.Context, addr, key, myIP string, myP
 		return
 	}
 	defer conn.Close()
-	client := ttp.NewTrackerComunicationClient(conn)
+	client := pb.NewTrackerClient(conn)
 
-	m := ttp.KnowMeRequest{
+	m := pb.KnowMeRequest{
 		RedKey: key,
 		IP:     myIP,
 		Port:   myPort,
@@ -268,10 +268,10 @@ func main() {
 	var trackerServer *tk.TrackerServer
 	if *load {
 		log.Println("Flag set--> load ")
-		trackerServer = newTrackerServerFromLoad(string(redKey[:]))
+		trackerServer = newTrackerServerFromLoad(redKey[:])
 		trackerServer.BackupTrackers, _ = loadBkTrackers()
 	} else {
-		trackerServer = newTrackerServer(string(redKey[:]))
+		trackerServer = newTrackerServer(redKey[:])
 	}
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", *ip, *port))
 	if err != nil {
@@ -302,7 +302,7 @@ func main() {
 		} else {
 			bkchanel := make(chan tk.BkTracker, tkQueue.Len())
 			go putBkTrackersIntoServer(ctx, trackerServer, bkchanel)
-			go trackerTrackerCommunication(ctx, tkQueue, *redKeySeed, *ip, int32(*port), bkchanel)
+			go trackerTrackerCommunication(ctx, tkQueue, redKey[:], *ip, int32(*port), bkchanel)
 		}
 	}
 	go saveData(ctx, trackerServer, *saveTime)

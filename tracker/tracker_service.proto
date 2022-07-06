@@ -40,7 +40,7 @@ message AnnounceResponse {
 
 message ScraperQuery {
 	repeated bytes infoHash = 1;
-}
+}carpeta sin título
 
 message File {
 	int64 incomplete=1;
@@ -54,9 +54,34 @@ message ScraperResponse {
 	string failureReason = 2;
 }
 
+message RePublishQuery {
+	bytes redKey = 1;
+	bytes infoHash = 2;
+	string peerID = 3;
+	string IP = 4;         
+	int32 Port = 5;
+}
+
+message RePublishResponse {
+	int32 status = 1;
+}
+
+message KnowMeRequest {
+	bytes redKey = 1;
+    string IP = 2;         
+	int32 Port = 3;
+}
+
+message KnowMeResponse {
+    int32 status = 1;
+	int32 repeatInterval =2;
+}
+
 
 service Tracker {
 	rpc Publish (PublishQuery) returns (PublishResponse){}
     rpc Announce (AnnounceQuery) returns (AnnounceResponse){}
 	rpc Scrape(ScraperQuery) returns (ScraperResponse){}
+	rpc RePublish (RePublishQuery) returns (RePublishResponse){}
+	rpc KnowMe(KnowMeRequest) returns (KnowMeResponse){}
 }

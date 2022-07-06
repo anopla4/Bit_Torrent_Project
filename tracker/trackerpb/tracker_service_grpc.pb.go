@@ -25,6 +25,8 @@ type TrackerClient interface {
 	Publish(ctx context.Context, in *PublishQuery, opts ...grpc.CallOption) (*PublishResponse, error)
 	Announce(ctx context.Context, in *AnnounceQuery, opts ...grpc.CallOption) (*AnnounceResponse, error)
 	Scrape(ctx context.Context, in *ScraperQuery, opts ...grpc.CallOption) (*ScraperResponse, error)
+	RePublish(ctx context.Context, in *RePublishQuery, opts ...grpc.CallOption) (*RePublishResponse, error)
+	KnowMe(ctx context.Context, in *KnowMeRequest, opts ...grpc.CallOption) (*KnowMeResponse, error)
 }
 
 type trackerClient struct {
@@ -62,6 +64,24 @@ func (c *trackerClient) Scrape(ctx context.Context, in *ScraperQuery, opts ...gr
 	return out, nil
 }
 
+func (c *trackerClient) RePublish(ctx context.Context, in *RePublishQuery, opts ...grpc.CallOption) (*RePublishResponse, error) {
+	out := new(RePublishResponse)
+	err := c.cc.Invoke(ctx, "/tracker.Tracker/RePublish", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *trackerClient) KnowMe(ctx context.Context, in *KnowMeRequest, opts ...grpc.CallOption) (*KnowMeResponse, error) {
+	out := new(KnowMeResponse)
+	err := c.cc.Invoke(ctx, "/tracker.Tracker/KnowMe", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TrackerServer is the server API for Tracker service.
 // All implementations must embed UnimplementedTrackerServer
 // for forward compatibility
@@ -69,6 +89,8 @@ type TrackerServer interface {
 	Publish(context.Context, *PublishQuery) (*PublishResponse, error)
 	Announce(context.Context, *AnnounceQuery) (*AnnounceResponse, error)
 	Scrape(context.Context, *ScraperQuery) (*ScraperResponse, error)
+	RePublish(context.Context, *RePublishQuery) (*RePublishResponse, error)
+	KnowMe(context.Context, *KnowMeRequest) (*KnowMeResponse, error)
 	mustEmbedUnimplementedTrackerServer()
 }
 
@@ -84,6 +106,12 @@ func (UnimplementedTrackerServer) Announce(context.Context, *AnnounceQuery) (*An
 }
 func (UnimplementedTrackerServer) Scrape(context.Context, *ScraperQuery) (*ScraperResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Scrape not implemented")
+}
+func (UnimplementedTrackerServer) RePublish(context.Context, *RePublishQuery) (*RePublishResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RePublish not implemented")
+}
+func (UnimplementedTrackerServer) KnowMe(context.Context, *KnowMeRequest) (*KnowMeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method KnowMe not implemented")
 }
 func (UnimplementedTrackerServer) mustEmbedUnimplementedTrackerServer() {}
 
@@ -152,6 +180,42 @@ func _Tracker_Scrape_Handler(srv interface{}, ctx context.Context, dec func(inte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Tracker_RePublish_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RePublishQuery)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TrackerServer).RePublish(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tracker.Tracker/RePublish",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TrackerServer).RePublish(ctx, req.(*RePublishQuery))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tracker_KnowMe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(KnowMeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TrackerServer).KnowMe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/tracker.Tracker/KnowMe",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TrackerServer).KnowMe(ctx, req.(*KnowMeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Tracker_ServiceDesc is the grpc.ServiceDesc for Tracker service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -170,6 +234,14 @@ var Tracker_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Scrape",
 			Handler:    _Tracker_Scrape_Handler,
+		},
+		{
+			MethodName: "RePublish",
+			Handler:    _Tracker_RePublish_Handler,
+		},
+		{
+			MethodName: "KnowMe",
+			Handler:    _Tracker_KnowMe_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
