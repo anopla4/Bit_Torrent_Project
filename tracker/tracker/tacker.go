@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"grpc-go/peer"
 	"io/ioutil"
 	"log"
 
@@ -19,12 +18,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	//"google.golang.org/grpc"
-	//"google.golang.org/grpc/peer"
-	//_ "google.golang.org/grpc" // testing
-
-	//ttp "Bit_Torrent_Project/tracker/tracker_tracker_protocol"
 	pb "Bit_Torrent_Project/tracker/trackerpb"
 )
 
@@ -246,11 +239,6 @@ func (tk *TrackerServer) publishTorrent(infoHash, peerID string, port int, ip ne
 
 //Announce maneja el servicio Announce request del tracker recibiendo un AnnounceQuery y devolviendo un AnnounceResponse
 func (tk *TrackerServer) Announce(ctx context.Context, annq *pb.AnnounceQuery) (*pb.AnnounceResponse, error) {
-	if p, ok := peer.FromContext(ctx); ok {
-		fmt.Println(p)
-	}
-	log.Println("Incoming Announce... ")
-
 	pa, err := announceQueryCheck(annq)
 	var ar pb.AnnounceResponse
 	if err != nil {
