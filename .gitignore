@@ -131,4 +131,6 @@ dmypy.json
 #
 tracker/go.sum
 client_ui/go.sum
-/tracker/server/data
+/tracker/server/data/
+/tracker/go.sum
+/client_ui/go.sum
