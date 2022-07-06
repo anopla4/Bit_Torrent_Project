@@ -129,5 +129,5 @@ dmypy.json
 .pyre/
 
 #
-/tracker/go.sum
-/client_ui/go.sum
+tracker/go.sum
+client_ui/go.sum
